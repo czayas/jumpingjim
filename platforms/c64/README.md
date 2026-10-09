@@ -40,6 +40,11 @@ En Manjaro: `sudo pacman -S acme vice` (o desde AUR si no está en los repos).
   cuadros en que los pisos realmente avanzan (en el original, en los niveles 1–2 iba al
   doble de velocidad que el hueco), también en la cima con los brazos en alto, y el hueco
   se dibuja con un cuadro de retraso para coincidir con el sprite.
+- **Efecto "transportador"** (agregado): cuando un enemigo cae por el hueco del piso 1
+  (en el original reaparece de golpe arriba), se hunde hacia el piso 0 desmaterializándose
+  entre destellos y se rematerializa cerca del techo antes de seguir su caída al piso 5.
+  Mientras dura no hace daño (igual que en el original). Usa los sprites 122–127 y el
+  multiplexor permite cambiar la capa de contorno por destellos de colores.
 - **Lógica**: traducida rutina por rutina del Z80; los comentarios llevan la dirección
   original (`; Z80 $86a9`).
 

@@ -107,6 +107,8 @@ last     = $c6
 irqf     = $c7
 ostmp    = $c8
 ifp      = $ca      ; 2, IRQ only
+tpov     = $ce      ; overlay sprite override for next add_obj (0 = none)
+tpcol    = $cf
 irqc     = $cc
 sidedirty = $cd
 
@@ -344,10 +346,12 @@ apply_event
         tax
         lda dptr,y
         sta SPRPTR+1,x
-        ora #1
+        lda dptro,y
         sta SPRPTR,x
         lda dcol,y
         sta $d028,x
+        lda dcol2,y
+        sta $d027,x
         rts
 
 copybuf ldx dnB
@@ -374,6 +378,10 @@ copybuf ldx dnB
         sta dptr,x
         lda bcol,x
         sta dcol,x
+        lda bptro,x
+        sta dptro,x
+        lda bcol2,x
+        sta dcol2,x
         dex
         bpl -
 +       rts
@@ -481,10 +489,21 @@ add_obj ; A=x  X=y  Y=ptr  cnt=colour
         sta ob_y,x
         tya
         sta ob_ptr,x
-        lda cnt
+        ora #1              ; overlay = black outline, unless tpov says otherwise
+        sta ob_ptro,x
+        lda #0
+        sta ob_col2,x
+        lda tpov
+        beq ++
+        sta ob_ptro,x
+        lda tpcol
+        sta ob_col2,x
+++      lda cnt
         sta ob_col,x
         inc obn
-+       rts
++       lda #0
+        sta tpov
+        rts
 
 build_sprites
         ; insertion sort indices by y
@@ -573,6 +592,10 @@ bs_ok   ldy t3
         sta bptr,y
         lda ob_col,x
         sta bcol,y
+        lda ob_ptro,x
+        sta bptro,y
+        lda ob_col2,x
+        sta bcol2,y
         lda ob_y,x
         sta by,y
         clc
@@ -1881,9 +1904,12 @@ upd_enemies
         beq +
         cmp #2
         beq ++
+        bcs +++
         jsr e_walk
         jmp +
 ++      jsr e_fall
+        jmp +
++++     jsr e_beam
 +       inx
         cpx #8
         bne -
@@ -2002,11 +2028,41 @@ egap    lda e_floor,x
         sta e_state,x
         dec e_floor,x
         bne ew_ret
-        lda #8
-        sta e_y,x
+        ; falls towards floor 0: beam out (state 3), beam in at the top
+        ; (state 4), then continue the original fall to floor 5
+        lda #3
+        sta e_state,x
+        lda #0
+        sta e_tp,x
         lda #5
         sta e_floor,x
 ew_ret  rts
+
+TP_TIME = 20
+e_beam  inc e_anim,x
+        lda #0
+        sta e_yoff,x
+        inc e_tp,x
+        lda e_state,x
+        cmp #3
+        bne eb_in
+        inc e_y,x           ; sinks into the hole while fading
+        lda e_tp,x
+        cmp #TP_TIME
+        bcc +
+        lda #4              ; reappear near the top of the screen
+        sta e_state,x
+        lda #0
+        sta e_tp,x
+        lda #32
+        sta e_y,x
++       rts
+eb_in   lda e_tp,x
+        cmp #TP_TIME
+        bcc +
+        lda #2              ; resume the original fall to floor 5
+        sta e_state,x
++       rts
 
 e_fall  inc e_anim,x
         lda #0
@@ -2125,9 +2181,15 @@ mo_pf   asl
 mo_enemies
         ldx #0
 mo_eloop
+        stx t5
         lda e_state,x
         beq mo_enext
-        stx t5
+        cmp #3
+        bcc mo_normal
+        jsr beam_look
+        bcs mo_enext        ; nothing visible this frame
+        ldx t5
+mo_normal
         lda e_kind,x
         and #7
         asl
@@ -2171,6 +2233,7 @@ mo_eloop
         jsr add_obj
         ldx t5
 mo_enext
+        ldx t5
         inx
         cpx #8
         bne mo_eloop
@@ -2600,6 +2663,70 @@ go_loop jsr waitframe
         sta obn
         jmp build_sprites
 
+; transporter effect for enemy X (state 3 = out, 4 = in).
+; u = 0 (solid) .. TP_TIME-1 (gone). Sets tpov/tpcol; returns C=1 to hide the
+; enemy body (the sparkles are then added here on a blank base sprite).
+beam_look
+        lda e_tp,x
+        ldy e_state,x
+        cpy #3
+        beq +
+        eor #$ff
+        clc
+        adc #TP_TIME        ; beam in: reverse
++       sta t1              ; u
+        lda fcount
+        lsr
+        and #3
+        tay
+        lda beam_cols,y
+        sta tpcol
+        lda t1
+        cmp #16
+        bcs bl_sparse
+        lda fcount
+        and #3
+        clc
+        adc #123
+        sta tpov
+        lda t1
+        cmp #8
+        bcc bl_body         ; solid body + sparkles
+        cmp #12
+        bcs bl_nobody
+        lda fcount          ; flickering body
+        and #1
+        beq bl_body
+        jmp bl_nobody
+bl_sparse
+        lda #127
+        sta tpov
+        lda fcount
+        and #1
+        beq bl_nobody
+        lda #0
+        sta tpov
+        sec
+        rts
+bl_body clc
+        rts
+bl_nobody
+        ; blank base + sparkle overlay at the enemy position
+        lda #0
+        sta cnt
+        lda e_y,x
+        clc
+        adc #43
+        tay
+        lda e_x,x
+        sty t3
+        ldx t3
+        ldy #122
+        jsr add_obj
+        sec
+        rts
+beam_cols !byte 1,3,1,7          ; white, cyan, white, yellow
+
 tear_y  and #31
         sta t1
         lsr
@@ -3002,6 +3129,13 @@ dmsb   !fill 10
 dpri   !fill 10
 dptr   !fill 10
 dcol   !fill 10
+dptro  !fill 10
+dcol2  !fill 10
+bptro  !fill 10
+bcol2  !fill 10
+ob_ptro !fill 10
+ob_col2 !fill 10
+e_tp   !fill 8        ; transporter timer
 bline  !fill 10
 breg   !fill 10
 bpair  !fill 10

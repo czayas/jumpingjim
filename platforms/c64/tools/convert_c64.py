@@ -164,8 +164,22 @@ for k in range(8):
             SPR[s], SPR[s + 1] = b, o
 b, o = convert_layers([drop], [drop_col], 0, 16, MC1)
 SPR[120], SPR[121] = b, o
+# transporter effect: 122 = blank, 123-126 = sparkle frames, 127 = sparse sparkle
+import random
+rnd = random.Random(1701)
+SPR[122] = bytearray(64)
+def sparkle(density):
+    sp = bytearray(64)
+    for y in range(11):
+        for x in range(2, 14):
+            if rnd.random() < density * (1.0 if 4 <= x <= 11 else 0.5):
+                sp[y*3 + x//8] |= 0x80 >> (x % 8)
+    return sp
+for k in range(4):
+    SPR[123 + k] = sparkle(0.35)
+SPR[127] = sparkle(0.12)
 blob = bytearray()
-for s in range(16, 122):
+for s in range(16, 128):
     blob += SPR.get(s, bytearray(64))
 w('sprites.bin', blob)
 

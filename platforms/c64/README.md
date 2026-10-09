@@ -40,7 +40,10 @@ En Manjaro: `sudo pacman -S acme vice` (o desde AUR si no está en los repos).
   cuadros en que los pisos realmente avanzan (en el original, en los niveles 1–2 iba al
   doble de velocidad que el hueco), también en la cima con los brazos en alto, y el hueco
   se dibuja con un cuadro de retraso para coincidir con el sprite.
-- **Efecto "transportador"** (agregado): cuando un enemigo cae por el hueco del piso 1
+- **Robot detenido sincronizado** (agregado): el robot (tipo 5) camina 64 cuadros y se
+  detiene 64; mientras está detenido ahora viaja con el piso en vez de quedar fijo en la
+  pantalla mientras el piso se le desliza debajo.
+- **Efecto "transportador" (agregado): cuando un enemigo cae por el hueco del piso 1
   (en el original reaparece de golpe arriba), se hunde hacia el piso 0 desmaterializándose
   entre destellos y se rematerializa cerca del techo antes de seguir su caída al piso 5.
   Mientras dura no hace daño (igual que en el original). Usa los sprites 122–127 y el

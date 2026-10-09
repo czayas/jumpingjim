@@ -85,7 +85,7 @@ kind|variant<<3, anim, yoff`.
 - kind 6: `yoff = 10 + 2*((anim>>3)&1)`;
 - kind 2 y 7: **persiguen** — si están en el piso del jugador y éste no muere,
   `speed = ±enemy_speed[kind]` hacia él;
-- kind 5: si `anim & 0x40` no se mueve ese cuadro;
+- kind 5 (robot): si `anim & 0x40` no se mueve ese cuadro (64 cuadros camina, 64 se detiene). *Recomendado para ports: mientras está detenido, arrastrarlo con el piso como a Jim.*
 - movimiento: `x += speed`, rebota en 0 y 240 (invierte velocidad).
 - Si su piso ≠ 0 y está sobre el hueco → state 2 y `floor--`; si llega a 0 reaparece
   arriba: `y = 8, floor = 5`.

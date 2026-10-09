@@ -1915,6 +1915,26 @@ upd_enemies
         bne -
         rts
 
+; carry enemy X with its floor (only on frames where the floors advanced)
+e_ride  lda gapmoved
+        beq +++
+        ldy e_floor,x
+        beq +++
+        lda gapspd,y
+        bmi +
+        clc
+        adc e_x,x
+        cmp #$f1
+        bcc ++
+        lda #$f0
+        jmp ++
++       clc
+        adc e_x,x
+        bcs ++
+        lda #0
+++      sta e_x,x
++++     rts
+
 e_bob   lda e_anim,x
         and #31
         tay
@@ -1946,6 +1966,7 @@ e_walk  inc e_anim,x
         lda e_anim,x
         and #$40
         beq emove
+        jsr e_ride          ; robot paused: rides the sliding floor (C64 addition)
         jmp egap
 ek3     jsr e_bob
         sta e_yoff,x

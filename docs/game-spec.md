@@ -56,11 +56,11 @@ Cada cuadro: si `invuln>0`, `invuln--`. Luego según `state`:
 
 | state | significado | comportamiento |
 |---|---|---|
-| 0 | parado/caminando | *arrastre*: si floor≠0, `x += gap_speed[floor]`. Izq/der: `x ∓= 3`, `moving=1`, `anim++`. Si floor≠0 y está sobre el hueco (off 4, w 7) → **cae**: state=1, vy=1, fall_count=1, borde arcoíris 30 cuadros, sfx *fall*. Si no cae y se pulsa salto → state=1, vy=−5, fall_count=0, sfx *jump*. |
+| 0 | parado/caminando | *arrastre*: si floor≠0, `x += gap_speed[floor]` (el original lo hace en todos los cuadros aunque en niveles 1–2 los pisos se muevan en cuadros alternos; recomendado: sólo cuando los pisos avanzan). Izq/der: `x ∓= 3`, `moving=1`, `anim++`. Si floor≠0 y está sobre el hueco (off 4, w 7) → **cae**: state=1, vy=1, fall_count=1, borde arcoíris 30 cuadros, sfx *fall*. Si no cae y se pulsa salto → state=1, vy=−5, fall_count=0, sfx *jump*. |
 | 1 | en el aire | izq/der `x ∓= 3`. `ny = y + vy`. Si vy<0: **cabeza** — para c=1..6 con `d = floor_y[c]+19`, si `y ≥ d > ny` y NO está bajo el hueco (off 2, w 11) → `ny = d, vy = 0`. Si vy≥0: **aterrizaje** — para c=0..6 con `d=floor_y[c]`, si `y < d ≤ ny`: si c≠0 y está sobre el hueco → atraviesa (`fall_count++`; la 1ª vez arcoíris + sfx *fall*); si no → **aterriza**. Si sigue en el aire: `y=ny`; en cuadros impares de `jump_frame` `vy++` (máx 6). |
 | 2 | aturdido | arrastre + prueba de caída; `timer--`, a 0 → state 0. |
 | 3 | muriendo | si `y<200`: `y += vy`, `vy++` (máx 7). `timer--`; a 0: `lives--`; sin vidas → fin de partida; si no, reaparece. |
-| 4 | nivel completado | `timer--`; a 0 → siguiente nivel. |
+| 4 | nivel completado | `timer--`; a 0 → siguiente nivel. *(Original: sin arrastre. Recomendado para ports: aplicar el arrastre también aquí.)* |
 
 **Aterrizar en el piso c** (`$8825`): `y=floor_y[c]`, state 0, vy 0. Si `c > floor` anterior:
 +10 puntos, sfx *climb*. Si c=6: state 4, timer 150, +`level`×100 puntos (BCD), texto

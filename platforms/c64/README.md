@@ -36,6 +36,10 @@ En Manjaro: `sudo pacman -S acme vice` (o desde AUR si no está en los repos).
   canal C (triángulo) compartida con batería y efectos (prioridad efecto > batería > música).
   Las envolventes de volumen se aproximan con ADSR. La voz digitalizada del título se
   reproduce por `$D418` a ~8 kHz (con el truco de offset DC para que suene en el 8580).
+- **Sincronía Jim/pisos** (cambio respecto del original): Jim es arrastrado sólo en los
+  cuadros en que los pisos realmente avanzan (en el original, en los niveles 1–2 iba al
+  doble de velocidad que el hueco), también en la cima con los brazos en alto, y el hueco
+  se dibuja con un cuadro de retraso para coincidir con el sprite.
 - **Lógica**: traducida rutina por rutina del Z80; los comentarios llevan la dirección
   original (`; Z80 $86a9`).
 

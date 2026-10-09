@@ -67,6 +67,8 @@ obn      = $3c
 gapstart = $40      ; 7
 gaplen   = $47      ; 7
 gapspd   = $4e      ; 7
+gapdisp  = $55      ; 7  gap position currently drawn
+gapmoved = $5c      ; floors advanced this frame
 e_state  = $60      ; 8 each
 e_floor  = $68
 e_x      = $70
@@ -1121,7 +1123,45 @@ df_attr ldx t4
         rts
 
 ; move gaps (Z80 $85cc)
+; 1) the drawn gaps are first brought to the logical position computed in the
+;    previous frame: sprites appear one frame after being computed (multiplexer
+;    double buffer), so this keeps floors and Jim in step on screen.
+; 2) then the logical positions advance (only on even frames below level 3).
 move_gaps
+        ldx #1
+mg_loop stx t4
+        jsr floor_base
+        ldx t4
+mg_step lda gapstart,x
+        sec
+        sbc gapdisp,x
+        beq mg_next
+        bmi mg_left
+        lda gapdisp,x       ; one pixel right
+        jsr setpix3
+        ldx t4
+        lda gapdisp,x
+        clc
+        adc gaplen,x
+        jsr clrpix3
+        ldx t4
+        inc gapdisp,x
+        jmp mg_step
+mg_left dec gapdisp,x       ; one pixel left
+        lda gapdisp,x
+        jsr clrpix3
+        ldx t4
+        lda gapdisp,x
+        clc
+        adc gaplen,x
+        jsr setpix3
+        ldx t4
+        jmp mg_step
+mg_next inx
+        cpx #7
+        bne mg_loop
+        lda #0
+        sta gapmoved
         lda level
         cmp #3
         bcs +
@@ -1129,46 +1169,15 @@ move_gaps
         and #1
         beq +
         rts
-+       ldx #1
-mg_loop stx t4
-        jsr floor_base
-        ldx t4
-        lda gapspd,x
-        beq mg_next
-        bmi mg_left
-        sta t5
--       ldx t4
-        lda gapstart,x
-        jsr setpix3
-        ldx t4
-        lda gapstart,x
++       inc gapmoved
+        ldx #1
+-       lda gapstart,x
         clc
-        adc gaplen,x
-        jsr clrpix3
-        ldx t4
-        inc gapstart,x
-        dec t5
-        bne -
-        jmp mg_next
-mg_left eor #$ff
-        clc
-        adc #1
-        sta t5
--       ldx t4
-        dec gapstart,x
-        lda gapstart,x
-        jsr clrpix3
-        ldx t4
-        lda gapstart,x
-        clc
-        adc gaplen,x
-        jsr setpix3
-        dec t5
-        bne -
-mg_next ldx t4
+        adc gapspd,x
+        sta gapstart,x
         inx
         cpx #7
-        bne mg_loop
+        bne -
         rts
 
 ; carry clear if A (x) is inside the gap of floor Y, width gw (Z80 $84dc)
@@ -1405,6 +1414,13 @@ setup_level
         inx
         cpx #7
         bne -
+        ldx #6
+-       lda gapstart,x
+        sta gapdisp,x
+        dex
+        bpl -
+        lda #0
+        sta gapmoved
         jsr spawn_enemies
         jsr respawn
         jsr draw_hud
@@ -1508,7 +1524,9 @@ respawn lda #$78
         sta pinv
         rts
 
-ride    ldx pfloor
+ride    lda gapmoved        ; carried only when the floors really moved
+        beq +
+        ldx pfloor
         beq +
         lda px
         clc
@@ -1633,7 +1651,8 @@ ps_die  lda py
 +       rts
 ++      jmp respawn
 
-ps_done dec ptimer
+ps_done jsr ride            ; arms up on the moving top floor
+        dec ptimer
         bne +
         lda #1
         sta gstat

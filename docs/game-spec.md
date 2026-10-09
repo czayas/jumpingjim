@@ -143,3 +143,21 @@ joystick: arriba o fuego = salto (fuego también empieza).
 
 xorshift de 16 bits (semilla `0x2B7D`; en el título se incrementa cada cuadro para
 variar la semilla). Sólo afecta posiciones iniciales de huecos y enemigos.
+
+## 9. Diferencias con la descripción publicada en itch.io
+
+La página de itch.io (roman126) describe los cambios de la **versión 2**; el binario
+analizado es la **v4**. Esta especificación sigue al código de la v4. Diferencias:
+
+| Descripción (v2) | Código v4 |
+|---|---|
+| La araña cambia de dirección al azar | Ningún enemigo cambia de dirección al azar; sólo rebotan en los bordes o persiguen (tipos 2 y 7) |
+| Nivel 1: dos "blobs" verdes lentos | Nivel 1: enemigos de tipo 0 y 1 (distintos), variante de color `(nivel+i) mod 3` |
+| Los niveles alternan entre tres melodías | 12 melodías de juego distintas (`level_music`), más título, nivel completado y game over |
+| El borde parpadea al caer **y mientras está sentado** | El borde parpadea 30 cuadros al empezar a caer (no durante el aturdimiento) |
+
+Coinciden: 8 tipos de enemigos, uno nuevo por nivel; robot que se detiene y arranca (tipo 5);
+saltarines (tipos 3 y 4, este último salta el doble); niveles 1–2 a media velocidad; huecos
+distintos por piso que se achican con el nivel; aturdimiento más largo según la altura de
+la caída; silbido al caer y golpe al aterrizar; logo de palitos que se arma, tiembla y se
+desarma con colores cíclicos.

@@ -1,0 +1,3008 @@
+; ===========================================================================
+;  JUMPING JIM - Commodore 64 port
+;  Port of the ZX Spectrum Next game "Jumping Jim" (JumpingJim_v4.nex)
+;  Game logic translated routine by routine from the original Z80 code.
+;  Assembler: ACME   ->  acme -f cbm -o jumpingjim.prg main.a
+; ===========================================================================
+!cpu 6510
+; build with: make   (acme -f cbm -o ../build/jumpingjim.prg main.a)
+
+SCREEN   = $c000            ; screen RAM (bitmap colours) - VIC bank 3
+SPRPTR   = SCREEN + $3f8
+SPRDATA  = $c400            ; sprite slot 16
+BITMAP   = $e000            ; hires bitmap
+TOPLINE  = 16               ; raster line of the "top of frame" IRQ
+
+; ---------------------------------------------------------------- zero page
+fcount   = $02      ; frame counter (Z80 $6000)
+input    = $03      ; b0 right b1 left b2 jump b3 fire/start
+level    = $04
+levelbcd = $05
+lives    = $06
+score    = $07      ; 3 bytes BCD, low first
+hiscore  = $0a      ; 3 bytes
+px       = $0d
+py       = $0e
+pvy      = $0f
+pstate   = $10
+pfloor   = $11
+pfall    = $12
+ptimer   = $13
+pdir     = $14
+panim    = $15
+pinv     = $16
+pjf      = $17
+pmoving  = $18
+gstat    = $19
+hudflag  = $1a
+bandcol  = $1b
+palidx   = $1c
+flash    = $1d      ; border rainbow timer
+newy     = $1e
+t1       = $1f
+t2       = $20
+t3       = $21
+t4       = $22
+t5       = $23
+gw       = $24      ; gap test width
+dst      = $25      ; 2
+fp       = $27      ; 2
+sptr     = $29      ; 2
+rndlo    = $2b
+rndhi    = $2c
+border   = $2d
+flashrow = $2e
+flasha   = $2f
+flashb   = $30
+fbase    = $31      ; 2  floor row bitmap base
+cnt      = $33
+src      = $34      ; 2
+logo_t   = $36
+logo_st  = $37
+smpdone  = $38
+tt       = $39      ; title/gameover frame counter
+t1f      = $3a
+ready    = $3b
+obn      = $3c
+gapstart = $40      ; 7
+gaplen   = $47      ; 7
+gapspd   = $4e      ; 7
+e_state  = $60      ; 8 each
+e_floor  = $68
+e_x      = $70
+e_y      = $78
+e_spd    = $80
+e_kind   = $88
+e_anim   = $90
+e_yoff   = $98
+; music (used by IRQ)
+m_play   = $a0
+m_tick   = $a1
+m_speed  = $a2
+m_loop   = $a3
+m_rows   = $a4
+m_total  = $a5
+m_ptr    = $a6      ; 2
+m_start  = $a8      ; 2
+drum_t   = $aa
+drum_new = $ab
+drum_n   = $ac
+sfx_t    = $ad
+sfx_i    = $ae
+sfx_typ  = $af
+sfx_new  = $b0
+v3note   = $b1
+v3trig   = $b2
+v3mode   = $b3
+; multiplexer
+evnext   = $c0
+pending  = $c1
+dn       = $c2
+dmask    = $c3
+dnB      = $c4
+dmaskB   = $c5
+last     = $c6
+irqf     = $c7
+ostmp    = $c8
+ifp      = $ca      ; 2, IRQ only
+irqc     = $cc
+sidedirty = $cd
+
+; ---------------------------------------------------------------- BASIC stub
+*= $0801
+        !word basend, 2026
+        !byte $9e
+        !raw "2061"
+        !byte 0
+basend  !word 0
+
+; ===========================================================================
+start   sei
+        cld
+        ldx #$ff
+        txs
+        lda #$35
+        sta $01
+        lda #$7f
+        sta $dc0d
+        sta $dd0d
+        lda $dc0d
+        lda $dd0d
+        lda #0
+        sta $d01a
+        lda #<nmi
+        sta $fffa
+        lda #>nmi
+        sta $fffb
+        lda #<irq
+        sta $fffe
+        lda #>irq
+        sta $ffff
+        lda #$ff
+        sta $dc02
+        lda #0
+        sta $dc03
+        lda #$27            ; bitmap, display off while we set up
+        sta $d011
+        lda $dd02
+        ora #3
+        sta $dd02
+        lda $dd00
+        and #$fc            ; VIC bank 3 ($c000-$ffff)
+        sta $dd00
+        lda #$08            ; screen $c000, bitmap $e000
+        sta $d018
+        lda #$08
+        sta $d016
+        lda #0
+        sta $d020
+        sta $d021
+        ; ---- copy sprites to $c400.. ($d000-$dfff part needs I/O off)
+        lda #$34
+        sta $01
+        lda #<sprite_data
+        sta src
+        lda #>sprite_data
+        sta src+1
+        lda #<SPRDATA
+        sta dst
+        lda #>SPRDATA
+        sta dst+1
+        ldx #>(SPRITE_LEN+255)
+        ldy #0
+-       lda (src),y
+        sta (dst),y
+        iny
+        bne -
+        inc src+1
+        inc dst+1
+        dex
+        bne -
+        lda #$35
+        sta $01
+        ; ---- sprites
+        lda #0
+        sta $d015
+        sta $d017
+        sta $d01d
+        sta $d01b
+        sta $d010
+        lda #$aa            ; odd sprites multicolour (base layer)
+        sta $d01c
+        lda #SPR_MC0
+        sta $d025
+        lda #SPR_MC1
+        sta $d026
+        lda #0              ; overlay sprites black
+        sta $d027
+        sta $d029
+        sta $d02b
+        sta $d02d
+        jsr sid_init
+        lda #$ff
+        sta evnext
+        sta flashrow
+        lda #0
+        sta pending
+        sta dn
+        sta dmask
+        sta m_play
+        sta sfx_t
+        sta drum_t
+        sta flash
+        sta obn
+        lda #$7d
+        sta rndlo
+        lda #$2b
+        sta rndhi
+        lda #0
+        sta hiscore
+        sta hiscore+1
+        sta hiscore+2
+        lda #TOPLINE
+        sta $d012
+        lda #1
+        sta $d01a
+        asl $d019
+        cli
+        jsr build_sprites
+        lda #$37            ; bitmap on, 24 rows, yscroll 7 -> 256x192 window
+        sta $d011
+
+; ---------------------------------------------------------------- main loop
+mainloop
+        jsr title
+        jsr new_game
+-       jsr setup_level
+        jsr play
+        lda gstat
+        cmp #1
+        bne +
+        jsr next_level
+        jmp -
++       jsr gameover
+        jmp mainloop
+
+nmi     rti
+
+; ===========================================================================
+;  IRQ: top-of-frame tasks + sprite multiplexer events
+; ===========================================================================
+irq     pha
+        txa
+        pha
+        tya
+        pha
+        cld
+        lda #$ff
+        sta $d019
+        lda evnext
+        bmi irq_top
+        jsr do_events
+        jmp irq_exit
+irq_top
+        lda pending
+        beq +
+        jsr copybuf
+        lda #0
+        sta pending
++       lda dmask
+        sta $d015
+        lda #0
+        sta evnext
+        jsr do_events
+        inc fcount
+        ; rainbow stripes in the side "border" columns while falling
+        lda flash
+        beq +
+        dec flash
+        jsr irq_stripes
+        jmp ++
++       lda sidedirty
+        beq ++
+        lda #0
+        sta sidedirty
+        jsr irq_sides_plain
+++      jsr do_flashattr
+        jsr music
+irq_exit
+        pla
+        tay
+        pla
+        tax
+        pla
+        rti
+
+; process all events whose trigger line has been reached
+do_events
+        ldy evnext
+de_loop cpy dn
+        bcs de_done
+        lda $d012
+        clc
+        adc #2
+        bcs de_do
+        cmp dline,y
+        bcs de_do
+        lda dline,y
+        sta $d012
+        sty evnext
+        lda $d012           ; raster may have passed meanwhile
+        cmp dline,y
+        bcs de_loop
+        rts
+de_do   jsr apply_event
+        iny
+        jmp de_loop
+de_done lda #TOPLINE
+        sta $d012
+        lda #$ff
+        sta evnext
+        rts
+
+apply_event
+        ldx dreg,y
+        lda dxlo,y
+        sta $d000,x
+        sta $d002,x
+        lda dy,y
+        sta $d001,x
+        sta $d003,x
+        ldx dpair,y
+        lda $d010
+        and pairclr,x
+        ora dmsb,y
+        sta $d010
+        lda $d01b
+        and pairclr,x
+        ora dpri,y
+        sta $d01b
+        txa
+        asl
+        tax
+        lda dptr,y
+        sta SPRPTR+1,x
+        ora #1
+        sta SPRPTR,x
+        lda dcol,y
+        sta $d028,x
+        rts
+
+copybuf ldx dnB
+        stx dn
+        lda dmaskB
+        sta dmask
+        dex
+        bmi +
+-       lda bline,x
+        sta dline,x
+        lda breg,x
+        sta dreg,x
+        lda bpair,x
+        sta dpair,x
+        lda bxlo,x
+        sta dxlo,x
+        lda by,x
+        sta dy,x
+        lda bmsb,x
+        sta dmsb,x
+        lda bpri,x
+        sta dpri,x
+        lda bptr,x
+        sta dptr,x
+        lda bcol,x
+        sta dcol,x
+        dex
+        bpl -
++       rts
+
+; flashing attribute row (Spectrum FLASH bit)
+do_flashattr
+        lda flashrow
+        bmi +
+        lda fcount
+        and #15
+        bne +
+        ldx flashrow
+        lda sc_lo,x
+        sta ifp
+        lda sc_hi,x
+        sta ifp+1
+        lda fcount
+        and #16
+        beq fa1
+        lda flashb
+        jmp fa2
+fa1     lda flasha
+fa2     ldy #31
+-       sta (ifp),y
+        dey
+        bpl -
++       rts
+
+; side columns: moving 8-line colour stripes (Z80 $90fc raster rainbow)
+irq_stripes
+        lda #1
+        sta sidedirty
+        lda #<SCREEN
+        sta ifp
+        lda #>SCREEN
+        sta ifp+1
+        ldx #0
+-       txa
+        clc
+        adc fcount
+        and #7
+        tay
+        lda flash_border_b,y
+        jsr irq_siderow
+        inx
+        cpx #25
+        bne -
+        rts
+irq_sides_plain
+        lda #<SCREEN
+        sta ifp
+        lda #>SCREEN
+        sta ifp+1
+        ldx #25
+-       lda border
+        jsr irq_siderow
+        dex
+        bne -
+        rts
+irq_siderow             ; A = colour, ifp = row start; advances ifp
+        sta irqc
+        asl
+        asl
+        asl
+        asl
+        ora irqc
+        ldy #0
+        sta (ifp),y
+        iny
+        sta (ifp),y
+        iny
+        sta (ifp),y
+        iny
+        sta (ifp),y
+        ldy #36
+        sta (ifp),y
+        iny
+        sta (ifp),y
+        iny
+        sta (ifp),y
+        iny
+        sta (ifp),y
+        lda ifp
+        clc
+        adc #40
+        sta ifp
+        bcc +
+        inc ifp+1
++       rts
+
+pairmask !byte $03,$0c,$30,$c0
+pairclr  !byte $fc,$f3,$cf,$3f
+
+; ===========================================================================
+;  Sprite list -> sorted multiplex events (runs in main loop)
+;  objects: ob_x (game x 0-255), ob_y (VIC y), ob_ptr (base slot), ob_col
+; ===========================================================================
+add_obj ; A=x  X=y  Y=ptr  cnt=colour
+        stx ostmp
+        ldx obn
+        cpx #10
+        bcs +
+        sta ob_x,x
+        lda ostmp
+        sta ob_y,x
+        tya
+        sta ob_ptr,x
+        lda cnt
+        sta ob_col,x
+        inc obn
++       rts
+
+build_sprites
+        ; insertion sort indices by y
+        ldx #0
+-       cpx obn
+        beq bs_sorted
+        txa
+        sta order,x
+        ; insert
+        stx t1
+        ldy t1
+bs_ins  cpy #0
+        beq bs_next
+        lda order-1,y
+        sta t2
+        tax
+        lda ob_y,x
+        ldx order,y
+        cmp ob_y,x
+        bcc bs_next         ; prev.y < cur.y
+        beq bs_next
+        lda order,y         ; swap
+        sta order-1,y
+        lda t2
+        sta order,y
+        dey
+        jmp bs_ins
+bs_next ldx t1
+        inx
+        jmp -
+bs_sorted
+        lda #0
+        sta pfree
+        sta pfree+1
+        sta pfree+2
+        sta pfree+3
+        sta dmaskB
+        sta last
+        sta t3              ; event count
+        ldx #0
+bs_loop cpx obn
+        bne +
+        jmp bs_done
++       stx t4
+        lda order,x
+        sta t5              ; object index
+        ; choose pair with lowest pfree
+        ldy #0
+        lda pfree
+        sta t1
+        ldx #1
+-       lda pfree,x
+        cmp t1
+        bcs +
+        sta t1
+        txa
+        tay
++       inx
+        cpx #4
+        bne -
+        sty t2              ; pair
+        lda t1              ; trigger = max(pfree, last)
+        cmp last
+        bcs +
+        lda last
++       sta t1
+        beq bs_ok           ; 0 = set up at top of frame
+        clc
+        adc #2
+        bcs bs_skip
+        ldx t5
+        cmp ob_y,x
+        beq bs_ok
+        bcs bs_skip
+bs_ok   ldy t3
+        lda t1
+        sta bline,y
+        sta last
+        lda t2
+        sta bpair,y
+        asl
+        asl
+        sta breg,y
+        ldx t5
+        lda ob_ptr,x
+        sta bptr,y
+        lda ob_col,x
+        sta bcol,y
+        lda ob_y,x
+        sta by,y
+        clc
+        adc #22
+        bcc +
+        lda #$ff
++       ldx t2
+        sta pfree,x
+        lda pairmask,x
+        ora dmaskB
+        sta dmaskB
+        ldx t5
+        lda #0
+        sta bmsb,y
+        sta bpri,y
+        lda ob_x,x
+        cmp #241
+        bcc +
+        ldx t2
+        lda pairmask,x
+        sta bpri,y
+        ldx t5
+        lda ob_x,x
++       clc
+        adc #56
+        sta bxlo,y
+        bcc +
+        ldx t2
+        lda pairmask,x
+        sta bmsb,y
++       inc t3
+bs_skip ldx t4
+        inx
+        jmp bs_loop
+bs_done lda t3
+        sta dnB
+        lda #1
+        sta pending
+        rts
+
+; ===========================================================================
+;  frame sync / input / random
+; ===========================================================================
+waitframe
+        lda fcount
+-       cmp fcount
+        beq -
+        rts
+
+read_input
+        lda #0
+        sta t1
+        lda #$df            ; P
+        sta $dc00
+        lda $dc01
+        and #$02
+        bne +
+        lda #1
+        ora t1
+        sta t1
++       lda #$ef            ; O
+        sta $dc00
+        lda $dc01
+        and #$40
+        bne +
+        lda #2
+        ora t1
+        sta t1
++       lda #$fd            ; Z
+        sta $dc00
+        lda $dc01
+        and #$10
+        bne +
+        lda #2
+        ora t1
+        sta t1
++       lda #$fb            ; X
+        sta $dc00
+        lda $dc01
+        and #$80
+        bne +
+        lda #1
+        ora t1
+        sta t1
++       lda #$7f            ; Q, SPACE
+        sta $dc00
+        lda $dc01
+        sta t2
+        and #$40
+        bne +
+        lda #4
+        ora t1
+        sta t1
++       lda t2
+        and #$10
+        bne +
+        lda #12
+        ora t1
+        sta t1
++       lda #$fe            ; RETURN
+        sta $dc00
+        lda $dc01
+        and #$02
+        bne +
+        lda #8
+        ora t1
+        sta t1
++       lda #$ff
+        sta $dc00
+        lda $dc00           ; joystick port 2
+        jsr joybits
+        lda $dc01           ; joystick port 1
+        jsr joybits
+!ifdef TEST {
+        ; scripted input for automated testing
+        inc tframe
+        bne +
+        inc tframe+1
++       lda tframe
+        and #63
+        cmp #2
+        bcs +
+        lda #8              ; start / continue pulse
+        ora t1
+        sta t1
++       lda #TEST           ; TEST=5: jump + right held
+        ora t1
+        sta t1
+}
+        lda t1
+        sta input
+        rts
+!ifdef TEST {
+tframe  !word 0
+}
+joybits eor #$ff
+        sta t2
+        and #$08            ; right
+        beq +
+        lda #1
+        ora t1
+        sta t1
++       lda t2
+        and #$04            ; left
+        beq +
+        lda #2
+        ora t1
+        sta t1
++       lda t2
+        and #$01            ; up = jump
+        beq +
+        lda #4
+        ora t1
+        sta t1
++       lda t2
+        and #$10            ; fire = jump + start
+        beq +
+        lda #12
+        ora t1
+        sta t1
++       rts
+
+; 16 bit xorshift (same generator as the original)
+rand    lda rndhi
+        lsr
+        lda rndlo
+        ror
+        eor rndhi
+        sta rndhi
+        ror
+        eor rndlo
+        sta rndlo
+        eor rndhi
+        sta rndhi
+        lda rndlo
+        rts
+
+wait_release
+-       jsr waitframe
+        jsr read_input
+        lda input
+        and #8
+        bne -
+        rts
+
+waitn   ; wait A frames
+        sta cnt
+-       jsr waitframe
+        dec cnt
+        bne -
+        rts
+
+; ===========================================================================
+;  Screen helpers (Spectrum 32x24 area = C64 bitmap columns 4..35)
+; ===========================================================================
+set_border
+        sta border
+        sta $d020
+        asl
+        asl
+        asl
+        asl
+        ora border
+        sta t1
+        ldx #0
+-       lda sc_lo,x
+        sec
+        sbc #4
+        sta fp
+        lda sc_hi,x
+        sbc #0
+        sta fp+1
+        lda t1
+        ldy #0
+        sta (fp),y
+        iny
+        sta (fp),y
+        iny
+        sta (fp),y
+        iny
+        sta (fp),y
+        ldy #36
+        sta (fp),y
+        iny
+        sta (fp),y
+        iny
+        sta (fp),y
+        iny
+        sta (fp),y
+        inx
+        cpx #25
+        bne -
+        rts
+
+; cls: A = colour byte for the 32x24 area
+cls     sta t5
+        lda #<BITMAP
+        sta fp
+        lda #>BITMAP
+        sta fp+1
+        ldx #$1f
+        lda #0
+        tay
+-       sta (fp),y
+        iny
+        bne -
+        inc fp+1
+        dex
+        bne -
+-       sta (fp),y          ; last 64 bytes ($ff00-$ff3f)
+        iny
+        cpy #$40
+        bne -
+        ; side columns solid (they act as the Spectrum border)
+        ldx #0
+cls_side
+        lda bm_lo,x
+        sec
+        sbc #32
+        sta fp
+        lda bm_hi,x
+        sbc #0
+        sta fp+1
+        lda #$ff
+        ldy #31
+-       sta (fp),y
+        dey
+        bpl -
+        lda fp
+        clc
+        adc #<288
+        sta fp
+        lda fp+1
+        adc #>288
+        sta fp+1
+        lda #$ff
+        ldy #31
+-       sta (fp),y
+        dey
+        bpl -
+        inx
+        cpx #25
+        bne cls_side
+        ; colours
+        ldx #0
+-       lda t5
+        jsr fill_row_attr
+        inx
+        cpx #24
+        bne -
+        lda border
+        jmp set_border
+
+; fill attribute row X (32 cells) with A
+fill_row_attr
+        ldy sc_lo,x
+        sty fp
+        ldy sc_hi,x
+        sty fp+1
+        ldy #31
+-       sta (fp),y
+        dey
+        bpl -
+        rts
+
+; fill attrs: A=colour X=row Y=col cnt=count
+fill_attr
+        pha
+        tya
+        clc
+        adc sc_lo,x
+        sta fp
+        lda sc_hi,x
+        adc #0
+        sta fp+1
+        pla
+        ldy cnt
+        dey
+-       sta (fp),y
+        dey
+        bpl -
+        rts
+
+; clear pixels of char row X (32 cells)
+clear_row_pix
+        lda bm_lo,x
+        sta fp
+        lda bm_hi,x
+        sta fp+1
+        lda #0
+        tay
+-       sta (fp),y
+        iny
+        bne -
+        rts
+
+; cursor: A=row X=col
+setcur  tay
+        txa
+        asl
+        asl
+        asl
+        clc
+        adc bm_lo,y
+        sta dst
+        lda bm_hi,y
+        adc #0
+        sta dst+1
+        rts
+
+putch   sec
+        sbc #$20
+        ldy #0
+        sty fp+1
+        asl
+        rol fp+1
+        asl
+        rol fp+1
+        asl
+        rol fp+1
+        clc
+        adc #<font
+        sta fp
+        lda fp+1
+        adc #>font
+        sta fp+1
+        ldy #7
+-       lda (fp),y
+        sta (dst),y
+        dey
+        bpl -
+        lda dst
+        clc
+        adc #8
+        sta dst
+        bcc +
+        inc dst+1
++       rts
+
+; print zero terminated string at sptr
+print   ldy #0
+        lda (sptr),y
+        beq +
+        jsr putch
+        inc sptr
+        bne print
+        inc sptr+1
+        jmp print
++       rts
+
+!macro PRINTAT .row, .col, .str {
+        lda #.row
+        ldx #.col
+        jsr setcur
+        lda #<.str
+        sta sptr
+        lda #>.str
+        sta sptr+1
+        jsr print
+}
+!macro PRINT .str {
+        lda #<.str
+        sta sptr
+        lda #>.str
+        sta sptr+1
+        jsr print
+}
+!macro ATTR .col, .row, .col0, .n {
+        lda #.n
+        sta cnt
+        lda #.col
+        ldx #.row
+        ldy #.col0
+        jsr fill_attr
+}
+
+putbcd  pha
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        adc #$30
+        jsr putch
+        pla
+        and #$0f
+        clc
+        adc #$30
+        jmp putch
+
+; ===========================================================================
+;  Floors
+; ===========================================================================
+; set fbase for floor X
+floor_base
+        ldy floor_row,x
+        lda bm_lo,y
+        sta fbase
+        lda bm_hi,y
+        sta fbase+1
+        rts
+
+; pixel helpers on the 3 floor lines. A = x
+pix_addr
+        tay
+        and #$f8
+        clc
+        adc fbase
+        sta fp
+        lda fbase+1
+        adc #0
+        sta fp+1
+        tya
+        and #7
+        tay
+        lda bitmask,y
+        rts
+setpix3 jsr pix_addr
+        sta t2
+        ldy #0
+        ora (fp),y
+        sta (fp),y
+        iny
+        lda (fp),y
+        ora t2
+        sta (fp),y
+        iny
+        lda (fp),y
+        ora t2
+        sta (fp),y
+        rts
+clrpix3 jsr pix_addr
+        eor #$ff
+        sta t2
+        ldy #0
+        and (fp),y
+        sta (fp),y
+        iny
+        lda (fp),y
+        and t2
+        sta (fp),y
+        iny
+        lda (fp),y
+        and t2
+        sta (fp),y
+        rts
+
+; draw floor X completely (Z80 $84f0)
+draw_floor
+        stx t4
+        jsr floor_base
+        ldy #0
+        ldx #32
+df_cell lda #$ff
+        sta (fbase),y
+        iny
+        sta (fbase),y
+        iny
+        sta (fbase),y
+        iny
+        lda t4
+        beq +
+        lda #0
+        jmp ++
++       lda #$ff
+++      sta (fbase),y
+        iny
+        sta (fbase),y
+        iny
+        sta (fbase),y
+        iny
+        sta (fbase),y
+        iny
+        sta (fbase),y
+        iny
+        bne +
+        inc fbase+1
++       dex
+        bne df_cell
+        ldx t4
+        jsr floor_base
+        ldx t4
+        beq df_attr
+        lda gaplen,x
+        sta t5
+        lda gapstart,x
+        sta t3
+-       lda t3
+        jsr clrpix3
+        inc t3
+        dec t5
+        bne -
+df_attr ldx t4
+        lda palidx
+        asl
+        asl
+        asl
+        sec
+        sbc palidx          ; *7
+        clc
+        adc t4
+        tay
+        lda floor_row,x
+        tax
+        lda lev_floor,y
+        jsr fill_row_attr
+        ldx t4
+        rts
+
+; move gaps (Z80 $85cc)
+move_gaps
+        lda level
+        cmp #3
+        bcs +
+        lda fcount
+        and #1
+        beq +
+        rts
++       ldx #1
+mg_loop stx t4
+        jsr floor_base
+        ldx t4
+        lda gapspd,x
+        beq mg_next
+        bmi mg_left
+        sta t5
+-       ldx t4
+        lda gapstart,x
+        jsr setpix3
+        ldx t4
+        lda gapstart,x
+        clc
+        adc gaplen,x
+        jsr clrpix3
+        ldx t4
+        inc gapstart,x
+        dec t5
+        bne -
+        jmp mg_next
+mg_left eor #$ff
+        clc
+        adc #1
+        sta t5
+-       ldx t4
+        dec gapstart,x
+        lda gapstart,x
+        jsr clrpix3
+        ldx t4
+        lda gapstart,x
+        clc
+        adc gaplen,x
+        jsr setpix3
+        dec t5
+        bne -
+mg_next ldx t4
+        inx
+        cpx #7
+        bne mg_loop
+        rts
+
+; carry clear if A (x) is inside the gap of floor Y, width gw (Z80 $84dc)
+in_gap  sec
+        sbc gapstart,y
+        sta t1
+        lda gaplen,y
+        sec
+        sbc gw
+        sta t2
+        lda t1
+        cmp t2
+        rts
+
+; ===========================================================================
+;  Score / HUD
+; ===========================================================================
+add_score           ; A = BCD tens/units
+        sed
+        clc
+        adc score
+        sta score
+        lda score+1
+        adc #0
+        sta score+1
+        lda score+2
+        adc #0
+        sta score+2
+        cld
+        lda #1
+        sta hudflag
+        rts
+add_score100
+        sed
+        clc
+        adc score+1
+        sta score+1
+        lda score+2
+        adc #0
+        sta score+2
+        cld
+        lda #1
+        sta hudflag
+        rts
+
+update_hiscore
+        lda score+2
+        cmp hiscore+2
+        bcc +++
+        bne ++
+        lda score+1
+        cmp hiscore+1
+        bcc +++
+        bne ++
+        lda score
+        cmp hiscore
+        bcc +++
+        beq +++
+++      lda score
+        sta hiscore
+        lda score+1
+        sta hiscore+1
+        lda score+2
+        sta hiscore+2
++++     rts
+
+draw_hud
+        lda #0
+        sta hudflag
+        +PRINTAT 0, 0, s_score
+        lda score+2
+        jsr putbcd
+        lda score+1
+        jsr putbcd
+        lda score
+        jsr putbcd
+        +PRINT s_level
+        lda levelbcd
+        jsr putbcd
+        +PRINT s_2sp
+        lda #5
+        sta t5
+        lda lives
+        sta t4
+-       lda t4
+        beq +
+        dec t4
+        lda #'#'
+        jmp ++
++       lda #' '
+++      jsr putch
+        dec t5
+        bne -
+        +PRINT s_2sp
+        +ATTR $70, 0, 0, 12
+        +ATTR $30, 0, 12, 13
+        +ATTR $a0, 0, 25, 7
+        rts
+
+; ===========================================================================
+;  Game flow
+; ===========================================================================
+new_game
+        lda #3
+        sta lives
+        lda #1
+        sta level
+        sta levelbcd
+        lda #0
+        sta score
+        sta score+1
+        sta score+2
+        rts
+
+next_level
+        inc level
+        lda levelbcd
+        sed
+        clc
+        adc #1
+        cld
+        sta levelbcd
+        lda level
+        and #3
+        bne +
+        lda lives
+        cmp #5
+        bcs +
+        inc lives
++       rts
+
+setup_level
+        lda #0
+        sta gstat
+        sta flash
+        lda level
+        sec
+        sbc #1
+        and #7
+        sta palidx
+        tax
+        lda lev_border,x
+        sta border
+        lda #0
+        jsr cls
+        ; colour bands
+        lda palidx
+        asl
+        asl
+        asl
+        sta t4
+        ldx #0
+-       ldy t4
+        lda lev_band,y
+        jsr fill_row_attr
+        inx
+        jsr fill_row_attr
+        inx
+        jsr fill_row_attr
+        inx
+        inc t4
+        cpx #24
+        bne -
+        lda palidx
+        asl
+        asl
+        asl
+        tay
+        lda lev_band,y
+        sta bandcol
+        ; gap length base = $2c - 2*min(level-1,8)
+        lda level
+        sec
+        sbc #1
+        cmp #8
+        bcc +
+        lda #8
++       asl
+        sta t1
+        lda #$2c
+        sec
+        sbc t1
+        sta t3
+        lda #0
+        sta gapstart
+        sta gapspd
+        sta gaplen
+        ; speeds
+        lda level
+        sec
+        sbc #1
+        cmp #16
+        bcc +
+        lda #15
++       tax
+        lda spd_idx,x
+        sta t1
+        asl
+        clc
+        adc t1
+        asl                 ; *6
+        tay
+        ldx #1
+-       lda spd_sets,y
+        sta gapspd,x
+        iny
+        inx
+        cpx #7
+        bne -
+        ; gaps
+        ldx #1
+--      stx t4
+        jsr rand
+        ldx t4
+        sta gapstart,x
+        txa
+        clc
+        adc level
+-       cmp #6
+        bcc +
+        sbc #6
+        jmp -
++       tay
+        lda gap_add,y
+        clc
+        adc t3
+        sta gaplen,x
+        inx
+        cpx #7
+        bne --
+        ; draw floors
+        ldx #0
+-       jsr draw_floor
+        inx
+        cpx #7
+        bne -
+        jsr spawn_enemies
+        jsr respawn
+        jsr draw_hud
+        +PRINTAT 1, 11, s_ready
+        lda #$70
+        ldx #1
+        jsr fill_row_attr
+        ; palette name
+        lda palidx
+        asl
+        sta t1
+        asl
+        asl
+        clc
+        adc t1              ; *10
+        clc
+        adc palidx
+        clc
+        adc palidx
+        clc
+        adc palidx          ; *13
+        clc
+        adc #<pal_names
+        sta sptr
+        lda #>pal_names
+        adc #0
+        sta sptr+1
+        ldy #0
+        lda (sptr),y
+        tax
+        lda #2
+        jsr setcur
+        inc sptr
+        bne +
+        inc sptr+1
++       jsr print
+        lda #$30
+        ldx #2
+        jsr fill_row_attr
+        jsr make_objects
+        jsr build_sprites
+        ; level music
+        lda level
+        sec
+        sbc #1
+-       cmp #12
+        bcc +
+        sbc #12
+        jmp -
++       tax
+        lda lev_music,x
+        jsr start_music
+        lda #130
+        jsr waitn
+        ldx #1
+        jsr clear_row_pix
+        ldx #2
+        jsr clear_row_pix
+        lda bandcol
+        ldx #1
+        jsr fill_row_attr
+        ldx #2
+        jsr fill_row_attr
+        rts
+
+play    lda #0
+        sta gstat
+-       jsr waitframe
+        jsr read_input
+        jsr move_gaps
+        jsr upd_player
+        jsr upd_enemies
+        jsr collisions
+        jsr make_objects
+        jsr build_sprites
+        lda hudflag
+        beq +
+        jsr draw_hud
++       lda gstat
+        beq -
+        rts
+
+; ===========================================================================
+;  Player (Z80 $86a9)
+; ===========================================================================
+respawn lda #$78
+        sta px
+        lda #$b8
+        sta py
+        lda #0
+        sta pvy
+        sta pstate
+        sta pfloor
+        sta pfall
+        sta ptimer
+        sta pdir
+        sta panim
+        sta pmoving
+        sta flash
+        lda #$5a
+        sta pinv
+        rts
+
+ride    ldx pfloor
+        beq +
+        lda px
+        clc
+        adc gapspd,x
+        sta px
++       rts
+
+check_fall
+        ldy pfloor
+        beq +
+        lda #7
+        sta gw
+        lda px
+        clc
+        adc #4
+        jsr in_gap
+        bcs +
+        lda #1
+        sta pstate
+        sta pvy
+        sta pfall
+        lda #0
+        sta pjf
+        lda #30
+        sta flash
+        lda #2
+        jmp start_sfx
++       rts
+
+upd_player
+        lda pinv
+        beq +
+        dec pinv
++       lda pstate
+        cmp #1
+        bne +
+        jmp ps_air
++       cmp #2
+        bne +
+        jmp ps_stun
++       cmp #3
+        bne +
+        jmp ps_die
++       cmp #4
+        bne +
+        jmp ps_done
++       ; ---- standing
+        lda #0
+        sta pmoving
+        jsr ride
+        lda input
+        and #3
+        beq ps0_still
+        lsr
+        bcc +
+        lda px
+        clc
+        adc #3
+        sta px
+        lda #0
+        sta pdir
+        jmp ++
++       lda px
+        sec
+        sbc #3
+        sta px
+        lda #1
+        sta pdir
+++      lda #1
+        sta pmoving
+        inc panim
+ps0_still
+        jsr check_fall
+        lda pstate
+        bne +
+        lda input
+        and #4
+        beq +
+        lda #1
+        sta pstate
+        lda #$fb
+        sta pvy
+        lda #0
+        sta pfall
+        sta pjf
+        lda #0
+        jmp start_sfx
++       rts
+
+ps_stun lda #0
+        sta pmoving
+        jsr ride
+        jsr check_fall
+        lda pstate
+        cmp #2
+        bne +
+        dec ptimer
+        bne +
+        lda #0
+        sta pstate
++       rts
+
+ps_die  lda py
+        cmp #$c8
+        bcs +
+        clc
+        adc pvy
+        sta py
+        lda pvy
+        cmp #7
+        beq +
+        inc pvy
++       dec ptimer
+        bne +
+        dec lives
+        lda #1
+        sta hudflag
+        lda lives
+        bne ++
+        lda #2
+        sta gstat
++       rts
+++      jmp respawn
+
+ps_done dec ptimer
+        bne +
+        lda #1
+        sta gstat
++       rts
+
+ps_air  lda input
+        lsr
+        bcc +
+        lda px
+        clc
+        adc #3
+        sta px
+        lda #0
+        sta pdir
+        jmp ++
++       lsr
+        bcc ++
+        lda px
+        sec
+        sbc #3
+        sta px
+        lda #1
+        sta pdir
+++      lda py
+        clc
+        adc pvy
+        sta newy
+        lda pvy
+        bpl +
+        jsr head_check
+        jmp pa_apply
++       jsr land_check
+        lda pstate
+        cmp #1
+        beq pa_apply
+        rts
+pa_apply
+        lda newy
+        sta py
+        inc pjf
+        lda pjf
+        and #1
+        beq +
+        lda pvy
+        cmp #6
+        beq +
+        inc pvy
++       rts
+
+head_check
+        ldx #1
+hc_loop lda floor_y,x
+        clc
+        adc #19
+        sta t3
+        lda py
+        cmp t3
+        bcc hc_next
+        lda newy
+        cmp t3
+        bcs hc_next
+        lda #11
+        sta gw
+        txa
+        tay
+        lda px
+        clc
+        adc #2
+        jsr in_gap
+        bcc hc_next
+        lda t3
+        sta newy
+        lda #0
+        sta pvy
+        rts
+hc_next inx
+        cpx #7
+        bne hc_loop
+        rts
+
+land_check
+        ldx #0
+lc_loop lda py
+        cmp floor_y,x
+        bcs lc_next
+        lda newy
+        cmp floor_y,x
+        bcc lc_next
+        txa
+        beq land
+        tay
+        lda #7
+        sta gw
+        lda px
+        clc
+        adc #4
+        jsr in_gap
+        bcs land
+        lda pfall
+        bne +
+        lda #30
+        sta flash
+        stx t4
+        lda #2
+        jsr start_sfx
+        ldx t4
++       inc pfall
+lc_next inx
+        cpx #7
+        bne lc_loop
+        rts
+
+land    lda floor_y,x
+        sta py
+        lda pfloor
+        sta t4
+        stx pfloor
+        lda #0
+        sta pstate
+        sta pvy
+        cpx t4
+        beq +
+        bcc +
+        lda #$10
+        jsr add_score
+        lda #1
+        jsr start_sfx
++       lda pfloor
+        cmp #6
+        bne land_nf
+        lda #4
+        sta pstate
+        lda #150
+        sta ptimer
+        lda levelbcd
+        jsr add_score100
+        +PRINTAT 1, 8, s_complete
+        lda #$70
+        ldx #1
+        jsr fill_row_attr
+        lda #3
+        jmp start_music
+land_nf lda pfall
+        beq +
+        tax
+        lda #$28
+-       clc
+        adc #12
+        dex
+        bne -
+        sta ptimer
+        lda #2
+        sta pstate
+        lda #4
+        jmp start_sfx
++       rts
+
+; ===========================================================================
+;  Enemies (Z80 $88da, $8975)
+; ===========================================================================
+spawn_enemies
+        ldx #63
+        lda #0
+-       sta e_state,x
+        dex
+        bpl -
+        lda level
+        clc
+        adc #1
+        cmp #9
+        bcc +
+        lda #8
++       sta t3              ; enemy count
+        ldx #0
+se_loop stx t4
+        lda #1
+        sta e_state,x
+        txa
+-       cmp #5
+        bcc +
+        sbc #5
+        jmp -
++       clc
+        adc #1
+        sta e_floor,x
+        tay
+        lda floor_y,y
+        sta e_y,x
+        jsr rand
+-       cmp #$f0
+        bcc +
+        sbc #$f0
+        jmp -
++       ldx t4
+        sta e_x,x
+        lda enemy_spd,x
+        sta e_spd,x
+        txa
+        clc
+        adc level
+-       cmp #3
+        bcc +
+        sbc #3
+        jmp -
++       asl
+        asl
+        asl
+        ora t4
+        sta e_kind,x
+        jsr rand
+        ldx t4
+        and #1
+        beq +
+        lda #0
+        sec
+        sbc e_spd,x
+        sta e_spd,x
++       inx
+        cpx t3
+        bne se_loop
+        rts
+
+upd_enemies
+        ldx #0
+-       lda e_state,x
+        beq +
+        cmp #2
+        beq ++
+        jsr e_walk
+        jmp +
+++      jsr e_fall
++       inx
+        cpx #8
+        bne -
+        rts
+
+e_bob   lda e_anim,x
+        and #31
+        tay
+        lda bob_tab,y
+        rts
+
+e_walk  inc e_anim,x
+        lda level
+        cmp #3
+        bcs +
+        lda fcount
+        and #1
+        beq +
+        rts
++       lda e_kind,x
+        and #7
+        cmp #3
+        beq ek3
+        cmp #4
+        beq ek4
+        cmp #2
+        beq ekchase
+        cmp #7
+        beq ekchase
+        cmp #6
+        beq ek6
+        cmp #5
+        bne emove
+        lda e_anim,x
+        and #$40
+        beq emove
+        jmp egap
+ek3     jsr e_bob
+        sta e_yoff,x
+        jmp emove
+ek4     jsr e_bob
+        asl
+        sta e_yoff,x
+        jmp emove
+ek6     lda e_anim,x
+        lsr
+        lsr
+        lsr
+        and #1
+        asl
+        clc
+        adc #10
+        sta e_yoff,x
+        jmp emove
+ekchase lda pfloor
+        cmp e_floor,x
+        bne emove
+        lda pstate
+        cmp #3
+        bcs emove
+        lda e_kind,x
+        and #7
+        tay
+        lda enemy_spd,y
+        sta t1
+        lda px
+        cmp e_x,x
+        beq emove
+        bcc +
+        lda t1
+        sta e_spd,x
+        jmp emove
++       lda #0
+        sec
+        sbc t1
+        sta e_spd,x
+emove   lda e_x,x
+        clc
+        adc e_spd,x
+        ldy e_spd,x
+        bcc em_nc
+        cpy #$80
+        bcs em_store
+        lda #$f0
+        sta e_x,x
+        jmp em_bounce
+em_nc   cpy #$80
+        bcs em_under
+        cmp #$f1
+        bcc em_store
+        lda #$f0
+        sta e_x,x
+        jmp em_bounce
+em_under
+        lda #0
+        sta e_x,x
+em_bounce
+        lda #0
+        sec
+        sbc e_spd,x
+        sta e_spd,x
+        jmp egap
+em_store
+        sta e_x,x
+egap    lda e_floor,x
+        beq ew_ret
+        tay
+        lda #7
+        sta gw
+        lda e_x,x
+        clc
+        adc #4
+        jsr in_gap
+        bcs ew_ret
+        lda #2
+        sta e_state,x
+        dec e_floor,x
+        bne ew_ret
+        lda #8
+        sta e_y,x
+        lda #5
+        sta e_floor,x
+ew_ret  rts
+
+e_fall  inc e_anim,x
+        lda #0
+        sta e_yoff,x
+        lda e_y,x
+        clc
+        adc #3
+        sta e_y,x
+        ldy e_floor,x
+        cmp floor_y,y
+        bcc +
+        lda floor_y,y
+        sta e_y,x
+        lda #1
+        sta e_state,x
++       rts
+
+collisions
+        lda pinv
+        bne cl_ret
+        lda pstate
+        cmp #3
+        bcs cl_ret
+        ldx #0
+cl_loop lda e_state,x
+        cmp #1
+        bne cl_next
+        lda e_y,x
+        sec
+        sbc e_yoff,x
+        sta t1
+        lda py
+        sec
+        sbc t1
+        bcs +
+        eor #$ff
+        adc #1
++       cmp #8
+        bcs cl_next
+        lda px
+        sec
+        sbc e_x,x
+        bcs +
+        eor #$ff
+        adc #1
++       cmp #9
+        bcs cl_next
+        lda #3
+        sta pstate
+        lda #70
+        sta ptimer
+        lda #$fa
+        sta pvy
+        lda #3
+        jmp start_sfx
+cl_next inx
+        cpx #8
+        bne cl_loop
+cl_ret  rts
+
+; ===========================================================================
+;  Objects for the multiplexer (Z80 $8417)
+; ===========================================================================
+make_objects
+        lda #0
+        sta obn
+        lda pinv
+        and #4
+        bne mo_enemies
+        lda pstate
+        cmp #1
+        bne +
+        lda #5
+        jmp mo_pf
++       cmp #2
+        bne +
+        lda ptimer
+        lsr
+        lsr
+        lsr
+        and #1
+        clc
+        adc #6
+        jmp mo_pf
++       cmp #3
+        bne +
+        lda #8
+        jmp mo_pf
++       cmp #4
+        bne +
+        lda #9
+        jmp mo_pf
++       lda pmoving
+        beq +
+        lda panim
+        lsr
+        lsr
+        and #3
+        jmp mo_pf
++       lda #4
+mo_pf   asl
+        clc
+        adc pdir
+        asl
+        clc
+        adc #16
+        tay
+        lda #PLAYER_COL
+        sta cnt
+        lda py
+        clc
+        adc #38
+        tax
+        lda px
+        jsr add_obj
+mo_enemies
+        ldx #0
+mo_eloop
+        lda e_state,x
+        beq mo_enext
+        stx t5
+        lda e_kind,x
+        and #7
+        asl
+        sta t1              ; kind*2
+        lda e_anim,x
+        lsr
+        lsr
+        lsr
+        and #1
+        ora t1              ; kind*2+a
+        asl
+        sta t1
+        lda e_spd,x
+        asl                 ; sign -> carry
+        lda t1
+        adc #0              ; +dir
+        asl
+        clc
+        adc #56
+        sta t2              ; sprite slot
+        lda e_kind,x
+        and #$18
+        sta t1              ; variant*8
+        lda e_kind,x
+        and #7
+        ora t1
+        tay
+        lda enemy_cols,y
+        sta cnt
+        lda e_y,x
+        sec
+        sbc e_yoff,x
+        clc
+        adc #43
+        tax
+        ldy t2
+        stx t3
+        ldx t5
+        lda e_x,x
+        ldx t3
+        jsr add_obj
+        ldx t5
+mo_enext
+        inx
+        cpx #8
+        bne mo_eloop
+        rts
+
+; ===========================================================================
+;  Title screen (Z80 $8d1c)
+; ===========================================================================
+title   lda #0
+        sta obn
+        jsr build_sprites
+        jsr stop_sound
+        lda #0
+        sta border
+        sta smpdone
+        sta logo_t
+        sta tt
+        sta t1f
+        lda #$ff
+        sta logo_st
+        lda #$f0
+        jsr cls
+        ; ground
+        ldx #23
+        lda bm_lo,x
+        sta fp
+        lda bm_hi,x
+        sta fp+1
+        lda #$ff
+        ldy #0
+-       sta (fp),y
+        iny
+        bne -
+        lda #$d0
+        ldx #23
+        jsr fill_row_attr
+        ; double line under the logo (row 7, lines 2-3)
+        ldx #7
+        lda bm_lo,x
+        sta fp
+        lda bm_hi,x
+        sta fp+1
+        ldx #32
+-       ldy #2
+        lda #$ff
+        sta (fp),y
+        iny
+        sta (fp),y
+        lda fp
+        clc
+        adc #8
+        sta fp
+        bcc +
+        inc fp+1
++       dex
+        bne -
+        +PRINTAT 8, 6, s_edition
+        lda #$30
+        ldx #8
+        jsr fill_row_attr
+        +PRINTAT 10, 10, s_hiscore
+        lda hiscore+2
+        jsr putbcd
+        lda hiscore+1
+        jsr putbcd
+        lda hiscore
+        jsr putbcd
+        lda #$70
+        ldx #10
+        jsr fill_row_attr
+        +PRINTAT 12, 6, s_move
+        +PRINTAT 14, 6, s_jump
+        +PRINTAT 16, 7, s_joy
+        lda #$10
+        ldx #12
+        jsr fill_row_attr
+        ldx #14
+        jsr fill_row_attr
+        ldx #16
+        jsr fill_row_attr
+        +ATTR $30, 12, 6, 4
+        +ATTR $30, 14, 6, 4
+        +ATTR $30, 16, 7, 8
+        +PRINTAT 18, 6, s_press
+        lda #$70
+        sta flasha
+        lda #$07
+        sta flashb
+        lda #$70
+        ldx #18
+        jsr fill_row_attr
+        lda #18
+        sta flashrow
+ti_loop jsr waitframe
+        jsr read_input
+        inc rndlo
+        bne +
+        inc rndhi
++       inc tt
+        lda tt
+        and #3
+        bne +
+        jsr rainbow
++       jsr draw_logo
+        inc logo_t
+        lda logo_t
+        cmp #$f0
+        bcc +
+        lda #0
+        sta logo_t
++       lda smpdone
+        bne +
+        lda logo_t
+        cmp #$2a
+        bcc +
+        lda #1
+        sta smpdone
+        jsr stop_sound
+        jsr play_sample
+        lda #2
+        jsr start_music
++       ; walking Jim and a baddie
+        lda t1f
+        clc
+        adc #2
+        cmp #$f4
+        bcc +
+        lda #0
++       sta t1f
+        lda #0
+        sta obn
+        lda #PLAYER_COL
+        sta cnt
+        lda t1f
+        lsr
+        lsr
+        lsr
+        and #3
+        asl
+        asl
+        clc
+        adc #16
+        tay
+        ldx #$b8+38
+        lda t1f
+        jsr add_obj
+        lda t1f
+        cmp #$30
+        bcc +
+        lda enemy_cols
+        sta cnt
+        lda t1f
+        lsr
+        lsr
+        lsr
+        and #1
+        asl
+        asl
+        clc
+        adc #56
+        tay
+        ldx #$b8+43
+        lda t1f
+        sec
+        sbc #$30
+        jsr add_obj
++       jsr build_sprites
+        lda input
+        and #8
+        bne +
+        jmp ti_loop
++       jsr wait_release
+        lda #$ff
+        sta flashrow
+        lda #0
+        sta obn
+        jmp build_sprites
+
+; colour cycling of the logo rows (Z80 $8eab)
+rainbow lda tt
+        lsr
+        lsr
+        sta t1
+        ldx #0
+-       txa
+        clc
+        adc t1
+        and #7
+        tay
+        lda rainbow_ink,y
+        sta SCREEN+1*40+4,x
+        sta SCREEN+2*40+4,x
+        sta SCREEN+3*40+4,x
+        sta SCREEN+4*40+4,x
+        sta SCREEN+5*40+4,x
+        sta SCREEN+6*40+4,x
+        inx
+        cpx #32
+        bne -
+        lda #0
+        sec
+        sbc t1
+        sta t1
+        ldx #0
+-       txa
+        clc
+        adc t1
+        and #7
+        tay
+        lda rainbow_ink,y
+        sta SCREEN+7*40+4,x
+        inx
+        cpx #32
+        bne -
+        rts
+
+; animated logo: precalculated states (Z80 $9172)
+draw_logo
+        ldx logo_t
+        lda title_lv,x
+        cmp #7
+        bcc +
+        lda logo_t
+        lsr
+        lsr
+        and #1
+        clc
+        adc #7
++       cmp logo_st
+        bne +
+        rts
++       sta logo_st
+        ; src = logo + state*1536
+        sta t1
+        lda #0
+        sta src
+        lda t1
+        asl                 ; *6 pages
+        clc
+        adc t1
+        asl
+        clc
+        adc #>logo
+        sta src+1
+        lda #<logo          ; logo is page aligned
+        sta src
+        lda bm_lo+1
+        sta dst
+        lda bm_hi+1
+        sta dst+1
+        ldx #6
+dl_row  ldy #0
+-       lda (src),y
+        sta (dst),y
+        iny
+        bne -
+        inc src+1
+        lda dst
+        clc
+        adc #<320
+        sta dst
+        lda dst+1
+        adc #>320
+        sta dst+1
+        dex
+        bne dl_row
+        rts
+
+; ===========================================================================
+;  Game over (Z80 $8ef7)
+; ===========================================================================
+gameover
+        lda #0
+        sta obn
+        jsr build_sprites
+        lda #0
+        sta border
+        lda #0
+        jsr cls
+        jsr update_hiscore
+        ; GAME OVER title rows 0-1
+        ldx #0
+        lda #<go_title
+        sta src
+        lda #>go_title
+        sta src+1
+-       lda bm_lo,x
+        sta dst
+        lda bm_hi,x
+        sta dst+1
+        ldy #0
+--      lda (src),y
+        sta (dst),y
+        iny
+        bne --
+        inc src+1
+        inx
+        cpx #2
+        bne -
+        lda #$a0
+        ldx #0
+        jsr fill_row_attr
+        ldx #1
+        jsr fill_row_attr
+        ; crying face 18x18 cells at row 2 col 7
+        lda #<go_pic
+        sta src
+        lda #>go_pic
+        sta src+1
+        lda #<go_attr
+        sta sptr
+        lda #>go_attr
+        sta sptr+1
+        ldx #2
+go_row  lda bm_lo,x
+        clc
+        adc #56
+        sta dst
+        lda bm_hi,x
+        adc #0
+        sta dst+1
+        ldy #143
+-       lda (src),y
+        sta (dst),y
+        dey
+        cpy #$ff
+        bne -
+        lda src
+        clc
+        adc #144
+        sta src
+        bcc +
+        inc src+1
++       lda sc_lo,x
+        clc
+        adc #7
+        sta dst
+        lda sc_hi,x
+        adc #0
+        sta dst+1
+        ldy #17
+-       lda (sptr),y
+        sta (dst),y
+        dey
+        bpl -
+        lda sptr
+        clc
+        adc #18
+        sta sptr
+        bcc +
+        inc sptr+1
++       inx
+        cpx #20
+        bne go_row
+        +PRINTAT 20, 8, s_final
+        lda score+2
+        jsr putbcd
+        lda score+1
+        jsr putbcd
+        lda score
+        jsr putbcd
+        lda #$70
+        ldx #20
+        jsr fill_row_attr
+        +PRINTAT 21, 10, s_hiscore
+        lda hiscore+2
+        jsr putbcd
+        lda hiscore+1
+        jsr putbcd
+        lda hiscore
+        jsr putbcd
+        lda #$30
+        ldx #21
+        jsr fill_row_attr
+        lda #4
+        jsr start_music
+        lda #0
+        sta tt
+        sta ready
+go_loop jsr waitframe
+        jsr read_input
+        inc tt
+        ; two falling tears
+        lda #0
+        sta obn
+        lda tt
+        jsr tear_y
+        tax
+        lda #DROP_COL
+        sta cnt
+        ldy #120
+        lda #$64
+        jsr add_obj
+        lda tt
+        clc
+        adc #16
+        jsr tear_y
+        tax
+        ldy #120
+        lda #$8c
+        jsr add_obj
+        jsr build_sprites
+        lda tt
+        cmp #150
+        bne +
+        +PRINTAT 23, 6, s_press
+        lda #$70
+        sta flasha
+        lda #$07
+        sta flashb
+        lda #$70
+        ldx #23
+        jsr fill_row_attr
+        lda #23
+        sta flashrow
+        lda #1
+        sta ready
++       lda ready
+        beq go_loop
+        lda input
+        and #8
+        beq go_loop
+        jsr wait_release
+        lda #$ff
+        sta flashrow
+        lda #0
+        sta obn
+        jmp build_sprites
+
+tear_y  and #31
+        sta t1
+        lsr
+        clc
+        adc t1
+        clc
+        adc #$6c+38
+        rts
+
+; ===========================================================================
+;  Sound: AY music player translated to SID (Z80 $80ea)
+;  voice 1 = AY A, voice 2 = AY B, voice 3 = AY C + drums + sfx
+; ===========================================================================
+AD1 = $04
+SR1 = $40
+AD2 = $03
+SR2 = $60
+AD3 = $04
+SR3 = $30
+
+sid_init
+        ldx #$18
+        lda #0
+-       sta $d400,x
+        dex
+        bpl -
+        lda #$00
+        sta $d402
+        lda #$08
+        sta $d403
+        lda #$00
+        sta $d409
+        lda #$06
+        sta $d40a
+        lda #$00
+        sta $d410
+        lda #$08
+        sta $d411
+        lda #AD1
+        sta $d405
+        lda #SR1
+        sta $d406
+        lda #AD2
+        sta $d40c
+        lda #SR2
+        sta $d40d
+        lda #AD3
+        sta $d413
+        lda #SR3
+        sta $d414
+        lda #$0f
+        sta $d418
+        rts
+
+stop_sound
+        php
+        sei
+        lda #0
+        sta m_play
+        sta sfx_t
+        sta drum_t
+        sta v3mode
+        sta v3trig
+        lda #$40
+        sta $d404
+        sta $d40b
+        lda #$10
+        sta $d412
+        plp
+        rts
+
+; A = tune number
+start_music
+        php
+        sei
+        tax
+        lda mus_lo,x
+        clc
+        adc #<music_data
+        sta m_ptr
+        sta m_start
+        lda mus_hi,x
+        adc #>music_data
+        sta m_ptr+1
+        sta m_start+1
+        lda mus_rows,x
+        sta m_rows
+        sta m_total
+        lda mus_speed,x
+        sta m_speed
+        lda mus_loop,x
+        sta m_loop
+        lda #0
+        sta drum_t
+        lda #$40
+        sta $d404
+        sta $d40b
+        lda #0
+        sta v3note
+        lda #1
+        sta v3trig
+        sta m_tick
+        sta m_play
+        plp
+        rts
+
+; A = effect number
+start_sfx
+        php
+        sei
+        tax
+        lda sfx_start,x
+        sta sfx_i
+        lda sfx_len,x
+        sta sfx_t
+        lda sfx_type,x
+        sta sfx_typ
+        lda #1
+        sta sfx_new
+        plp
+        rts
+
+music   lda m_play
+        bne +
+        jmp mu_v3
++       dec m_tick
+        beq +
+        jmp mu_v3
++       lda m_speed
+        sta m_tick
+        ldy #0
+        lda (m_ptr),y       ; channel A
+        cmp #$ff
+        beq mu_b
+        tax
+        beq +
+        lda note_lo,x
+        sta $d400
+        lda note_hi,x
+        sta $d401
+        lda #$40
+        sta $d404
+        lda #$41
++       sta $d404           ; 0 -> gate off
+mu_b    iny
+        lda (m_ptr),y       ; channel B
+        cmp #$ff
+        beq mu_c
+        tax
+        beq +
+        lda note_lo,x
+        sta $d407
+        lda note_hi,x
+        sta $d408
+        lda #$40
+        sta $d40b
+        lda #$41
+        sta $d40b
+        jmp mu_c
++       lda #$40
+        sta $d40b
+mu_c    iny
+        lda (m_ptr),y       ; channel C
+        cmp #$ff
+        beq mu_d
+        sta v3note
+        lda #1
+        sta v3trig
+mu_d    iny
+        lda (m_ptr),y       ; drum
+        beq +
+        tax
+        lda drum_len,x
+        sta drum_t
+        stx drum_n
+        lda #1
+        sta drum_new
++       lda m_ptr
+        clc
+        adc #4
+        sta m_ptr
+        bcc +
+        inc m_ptr+1
++       dec m_rows
+        bne mu_v3
+        lda m_loop
+        beq +
+        lda m_start
+        sta m_ptr
+        lda m_start+1
+        sta m_ptr+1
+        lda m_total
+        sta m_rows
+        jmp mu_v3
++       lda #0
+        sta m_play
+        sta v3note
+        lda #1
+        sta v3trig
+        lda #$40
+        sta $d404
+        sta $d40b
+        ; ---- voice 3 arbitration: sfx > drum > music
+mu_v3   lda sfx_t
+        beq mu_nosfx
+        dec sfx_t
+        ldx sfx_i
+        inc sfx_i
+        lda sfx_lo,x
+        sta $d40e
+        lda sfx_hi,x
+        sta $d40f
+        lda sfx_new
+        beq +
+        lda #0
+        sta sfx_new
+        lda #$00
+        sta $d413
+        lda #$c0
+        sta $d414
+        lda #$40
+        ldx sfx_typ
+        beq ++
+        lda #$80
+++      sta $d412
+        ora #1
+        sta $d412
++       lda #2
+        sta v3mode
+        rts
+mu_nosfx
+        lda v3mode
+        cmp #2
+        bne +
+        lda #$40
+        sta $d412
+        lda #0
+        sta v3mode
++       lda drum_t
+        beq mu_nodrum
+        dec drum_t
+        lda drum_new
+        beq +
+        lda #0
+        sta drum_new
+        ldx drum_n
+        lda drum_lo,x
+        sta $d40e
+        lda drum_hi,x
+        sta $d40f
+        lda #$00
+        sta $d413
+        lda #$a0
+        sta $d414
+        lda #$80
+        sta $d412
+        lda #$81
+        sta $d412
++       lda #1
+        sta v3mode
+        lda drum_t
+        bne +
+        lda #$80
+        sta $d412
+        lda #0
+        sta v3mode
++       rts
+mu_nodrum
+        lda v3trig
+        beq +
+        lda #0
+        sta v3trig
+        ldx v3note
+        beq mu_v3off
+        lda note_lo,x
+        sta $d40e
+        lda note_hi,x
+        sta $d40f
+        lda #AD3
+        sta $d413
+        lda #SR3
+        sta $d414
+        lda #$10
+        sta $d412
+        lda #$11
+        sta $d412
++       rts
+mu_v3off
+        lda #$10
+        sta $d412
+        rts
+
+; 4-bit speech sample via $d418 (Z80 $9280), ~8 kHz, interrupts off
+play_sample
+        sei
+        lda #$00
+        sta $d405
+        sta $d40c
+        sta $d413
+        lda #$f0
+        sta $d406
+        sta $d40d
+        sta $d414
+        lda #$49            ; test+pulse+gate: DC offset (8580 digi boost)
+        sta $d404
+        sta $d40b
+        sta $d412
+        lda #<sample
+        sta src
+        lda #>sample
+        sta src+1
+        lda #<SAMPLE_LEN
+        sta t4
+        lda #>SAMPLE_LEN
+        sta t5
+        ldy #0
+ps_loop lda (src),y
+        tax
+        lsr
+        lsr
+        lsr
+        lsr
+        sta $d418
+        jsr ps_delay
+        txa
+        and #$0f
+        sta $d418
+        jsr ps_delay2
+        inc src
+        bne +
+        inc src+1
++       lda t4
+        bne +
+        dec t5
++       dec t4
+        lda t4
+        ora t5
+        bne ps_loop
+        lda #$0f
+        sta $d418
+        jsr sid_init
+        lda #$ff
+        sta $d019
+        cli
+        rts
+ps_delay
+        ldx #19
+-       dex
+        bne -
+        rts
+ps_delay2
+        ldx #13
+-       dex
+        bne -
+        rts
+
+; ===========================================================================
+;  Data
+; ===========================================================================
+s_score    !raw "SCORE ",0
+s_level    !raw "   LEVEL ",0
+s_2sp      !raw "  ",0
+s_ready    !raw "GET READY!",0
+s_edition  !raw "COMMODORE 64 EDITION",0
+s_hiscore  !raw "HI-SCORE ",0
+s_final    !raw "FINAL SCORE ",0
+s_move     !raw "MOVE   O/P  OR  Z/X",0
+s_jump     !raw "JUMP   Q  OR  SPACE",0
+s_joy      !raw "JOYSTICK  PORT 1/2",0
+s_press    !raw "PRESS SPACE OR FIRE",0
+s_complete !raw "LEVEL COMPLETE!",0
+
+bitmask  !byte $80,$40,$20,$10,$08,$04,$02,$01
+floor_row !byte 23,20,17,14,11,8,5
+
+bm_lo
+!for r, 0, 24 { !byte <(BITMAP + r*320 + 32) }
+bm_hi
+!for r, 0, 24 { !byte >(BITMAP + r*320 + 32) }
+sc_lo
+!for r, 0, 24 { !byte <(SCREEN + r*40 + 4) }
+sc_hi
+!for r, 0, 24 { !byte >(SCREEN + r*40 + 4) }
+
+!source "../build/tables.a"
+
+; multiplexer buffers
+ob_x   !fill 10
+ob_y   !fill 10
+ob_ptr !fill 10
+ob_col !fill 10
+order  !fill 10
+pfree  !fill 4
+dline  !fill 10
+dreg   !fill 10
+dpair  !fill 10
+dxlo   !fill 10
+dy     !fill 10
+dmsb   !fill 10
+dpri   !fill 10
+dptr   !fill 10
+dcol   !fill 10
+bline  !fill 10
+breg   !fill 10
+bpair  !fill 10
+bxlo   !fill 10
+by     !fill 10
+bmsb   !fill 10
+bpri   !fill 10
+bptr   !fill 10
+bcol   !fill 10
+
+font       !binary "../build/font.bin"
+go_attr    !binary "../build/gameover_attr.bin"
+music_data !binary "../build/music.bin"
+sample     !binary "../build/sample.bin"
+go_title   !binary "../build/gameover_title.bin"
+go_pic     !binary "../build/gameover_pic.bin"
+!align 255, 0
+logo       !binary "../build/logo.bin"
+sprite_data
+           !binary "../build/sprites.bin"
+SPRITE_LEN = * - sprite_data
+end_of_prg
+!if end_of_prg > $c000 { !error "program too large" }

@@ -16,6 +16,13 @@ En Manjaro: `sudo pacman -S acme vice` (o desde AUR si no está en los repos).
 ## Cargar en la máquina
 `LOAD"*",8,1` y `RUN` (o arrastrar el .d64/.prg a VICE).
 
+## Tabla de récords
+Al terminar una partida, si el puntaje entra entre los 10 mejores se piden 3 iniciales
+(izquierda/derecha cambian la letra, fuego confirma). La tabla se graba en el disco del que
+se cargó el juego como `JJ.HISCORES` y se lee al arrancar. Sin disco (por ejemplo, un .prg
+arrastrado a VICE) funciona igual pero no se conserva al apagar. En el título, tras ~12 s
+sin tocar nada, se muestra la tabla.
+
 ## Controles
 - Teclado: **O/Z** izquierda, **P/X** derecha, **Q/ESPACIO** saltar, **ESPACIO/RETURN** empezar.
 - Joystick en **puerto 2 o 1**: izquierda/derecha, arriba o fuego = saltar.

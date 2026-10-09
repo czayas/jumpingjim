@@ -59,7 +59,6 @@ cnt      = $33
 src      = $34      ; 2
 logo_t   = $36
 logo_st  = $37
-smpdone  = $38
 tt       = $39      ; title/gameover frame counter
 t1f      = $3a
 ready    = $3b
@@ -96,6 +95,7 @@ sfx_new  = $b0
 v3note   = $b1
 v3trig   = $b2
 v3mode   = $b3
+m_tune   = $b4
 ; multiplexer
 evnext   = $c0
 pending  = $c1
@@ -121,7 +121,8 @@ sidedirty = $cd
 basend  !word 0
 
 ; ===========================================================================
-start   sei
+start   jsr hs_boot         ; load JJ.HISCORES from disk (KERNAL still active)
+        sei
         cld
         ldx #$ff
         txs
@@ -219,10 +220,9 @@ start   sei
         sta rndlo
         lda #$2b
         sta rndhi
-        lda #0
-        sta hiscore
-        sta hiscore+1
-        sta hiscore+2
+        lda #$ff
+        sta hs_new
+        jsr hs_sync
         lda #TOPLINE
         sta $d012
         lda #1
@@ -2266,10 +2266,10 @@ mo_enext
 title   lda #0
         sta obn
         jsr build_sprites
-        jsr stop_sound
         lda #0
+        sta ti_idle
+        sta ti_idle+1
         sta border
-        sta smpdone
         sta logo_t
         sta tt
         sta t1f
@@ -2348,6 +2348,7 @@ title   lda #0
         jsr fill_row_attr
         lda #18
         sta flashrow
+        jsr title_music
 ti_loop jsr waitframe
         jsr read_input
         inc rndlo
@@ -2365,17 +2366,21 @@ ti_loop jsr waitframe
         bcc +
         lda #0
         sta logo_t
-+       lda smpdone
++       ; after ~12 s show the high score table (attract mode)
+        inc ti_idle
         bne +
-        lda logo_t
-        cmp #$2a
+        inc ti_idle+1
++       lda ti_idle+1
+        cmp #>600
         bcc +
-        lda #1
-        sta smpdone
-        jsr stop_sound
-        jsr play_sample
-        lda #2
-        jsr start_music
+        lda ti_idle
+        cmp #<600
+        bcc +
+        lda #50             ; 50*8 = 400 frames
+        jsr show_table
+        bcc ++
+        jmp ti_start        ; fire pressed on the table: start the game
+++      jmp title
 +       ; walking Jim and a baddie
         lda t1f
         clc
@@ -2427,11 +2432,22 @@ ti_loop jsr waitframe
         bne +
         jmp ti_loop
 +       jsr wait_release
+ti_start
         lda #$ff
         sta flashrow
         lda #0
         sta obn
         jmp build_sprites
+
+title_music             ; start the title tune unless it is already playing
+        lda m_play
+        beq +
+        lda m_tune
+        cmp #2
+        beq ++
++       lda #2
+        jsr start_music
+++      rts
 
 ; colour cycling of the logo rows (Z80 $8eab)
 rainbow lda tt
@@ -2682,7 +2698,8 @@ go_loop jsr waitframe
         sta flashrow
         lda #0
         sta obn
-        jmp build_sprites
+        jsr build_sprites
+        jmp hs_check
 
 ; transporter effect for enemy X (state 3 = out, 4 = in).
 ; u = 0 (solid) .. TP_TIME-1 (gone). Sets tpov/tpcol; returns C=1 to hide the
@@ -2824,6 +2841,7 @@ start_music
         php
         sei
         tax
+        stx m_tune
         lda mus_lo,x
         clc
         adc #<music_data
@@ -3040,69 +3058,500 @@ mu_v3off
         sta $d412
         rts
 
-; 4-bit speech sample via $d418 (Z80 $9280), ~8 kHz, interrupts off
-play_sample
+; ===========================================================================
+;  Top 10 table, saved to disk as "JJ.HISCORES" (C64 addition)
+; ===========================================================================
+HS_N = 10
+
+hs_sync lda hs_table
+        sta hiscore
+        lda hs_table+1
+        sta hiscore+1
+        lda hs_table+2
+        sta hiscore+2
+        rts
+
+; called from BASIC's SYS with the KERNAL running
+hs_boot lda $ba             ; device we were loaded from
+        cmp #8
+        bcs +
+        lda #8
++       sta bootdev
+        lda #fname_end-fname
+        ldx #<fname
+        ldy #>fname
+        jsr $ffbd           ; SETNAM
+        lda #1
+        ldx bootdev
+        ldy #0              ; SA 0: load to X/Y
+        jsr $ffba           ; SETLFS
+        lda #0
+        ldx #<hs_buf
+        ldy #>hs_buf
+        jsr $ffd5           ; LOAD
+        bcs hb_done
+        lda hs_buf
+        cmp hs_file
+        bne hb_done
+        lda hs_buf+1
+        cmp hs_file+1
+        bne hb_done
+        ldx #HS_N*6-1
+-       lda hs_buf+2,x
+        sta hs_table,x
+        dex
+        bpl -
+hb_done ldx #2              ; remember the KERNAL's zero page for later disk access
+-       lda $00,x
+        sta kzp,x
+        inx
+        bne -
+        rts
+
+; switch to a KERNAL-friendly machine state for disk I/O
+kernal_enter
+        jsr stop_sound
         sei
-        lda #$00
-        sta $d405
-        sta $d40c
-        sta $d413
-        lda #$f0
-        sta $d406
-        sta $d40d
-        sta $d414
-        lda #$49            ; test+pulse+gate: DC offset (8580 digi boost)
-        sta $d404
-        sta $d40b
-        sta $d412
-        lda #<sample
-        sta src
-        lda #>sample
-        sta src+1
-        lda #<SAMPLE_LEN
-        sta t4
-        lda #>SAMPLE_LEN
-        sta t5
-        ldy #0
-ps_loop lda (src),y
-        tax
-        lsr
-        lsr
-        lsr
-        lsr
-        sta $d418
-        jsr ps_delay
-        txa
-        and #$0f
-        sta $d418
-        jsr ps_delay2
-        inc src
-        bne +
-        inc src+1
-+       lda t4
-        bne +
-        dec t5
-+       dec t4
-        lda t4
-        ora t5
-        bne ps_loop
-        lda #$0f
-        sta $d418
-        jsr sid_init
+        lda #0
+        sta $d01a
+        sta $d015
+        lda #$ff
+        sta $d019
+        ldx #2
+-       lda $00,x
+        sta zpsave,x
+        lda kzp,x
+        sta $00,x
+        inx
+        bne -
+        lda #$36            ; KERNAL + I/O
+        sta $01
+        rts
+kernal_leave
+        sei
+        lda #$35
+        sta $01
+        ldx #2
+-       lda zpsave,x
+        sta $00,x
+        inx
+        bne -
+        lda #$7f
+        sta $dc0d
+        lda $dc0d
+        lda #$ff
+        sta $dc02
+        lda #0
+        sta $dc03
+        lda #$ff
+        sta evnext
+        lda #TOPLINE
+        sta $d012
+        lda #1
+        sta $d01a
         lda #$ff
         sta $d019
         cli
         rts
-ps_delay
-        ldx #19
--       dex
+
+hs_save jsr kernal_enter
+        lda #scratch_end-scratch
+        ldx #<scratch
+        ldy #>scratch
+        jsr $ffbd
+        lda #15
+        ldx bootdev
+        ldy #15
+        jsr $ffba
+        jsr $ffc0           ; OPEN 15,dev,15,"S0:JJ.HISCORES"
+        lda #15
+        jsr $ffc3           ; CLOSE
+        jsr $ffcc           ; CLRCHN
+        lda #fname_end-fname
+        ldx #<fname
+        ldy #>fname
+        jsr $ffbd
+        lda #1
+        ldx bootdev
+        ldy #1
+        jsr $ffba
+        lda #<hs_file
+        sta $fb
+        lda #>hs_file
+        sta $fc
+        lda #$fb
+        ldx #<hs_file_end
+        ldy #>hs_file_end
+        jsr $ffd8           ; SAVE
+        jmp kernal_leave
+
+; after game over: does the score enter the table?
+hs_check
+        ldx #0
+        ldy #0
+-       lda score+2
+        cmp hs_table+2,y
+        bcc hc_nx
+        bne hc_found
+        lda score+1
+        cmp hs_table+1,y
+        bcc hc_nx
+        bne hc_found
+        lda score
+        cmp hs_table,y
+        bcc hc_nx
+        bne hc_found
+hc_nx   tya
+        clc
+        adc #6
+        tay
+        inx
+        cpx #HS_N
         bne -
         rts
-ps_delay2
-        ldx #13
--       dex
+hc_found
+        stx hs_new
+        sty t3              ; offset of the new entry
+        tya
+        clc
+        adc #6
+        sta t5
+        ldy #HS_N*6-1       ; shift lower entries down
+-       cpy t5
+        bcc +
+        lda hs_table-6,y
+        sta hs_table,y
+        dey
+        jmp -
++       ldy t3
+        lda score
+        sta hs_table,y
+        lda score+1
+        sta hs_table+1,y
+        lda score+2
+        sta hs_table+2,y
+        jsr enter_name
+        ldy t3
+        ldx #0
+-       lda nameidx,x
+        stx t1
+        tax
+        lda lettab,x
+        sta hs_table+3,y
+        iny
+        ldx t1
+        inx
+        cpx #3
         bne -
+        jsr hs_sync
+        +PRINTAT 21, 11, s_saving
+        lda #$10
+        ldx #21
+        jsr fill_row_attr
+        jsr hs_save
+        jsr title_music
+        lda #100            ; 800 frames
+        jsr show_table
+        lda #$ff
+        sta hs_new
         rts
+
+; arcade style initials: left/right choose, fire confirms
+enter_name
+        lda #0
+        sta border
+        jsr cls
+        jsr title_music
+        +PRINTAT 3, 8, s_newhi
+        lda #$70
+        ldx #3
+        jsr fill_row_attr
+        +PRINTAT 6, 6, s_enter
+        lda #$30
+        ldx #6
+        jsr fill_row_attr
+        +PRINTAT 16, 3, s_lr
+        +PRINTAT 18, 7, s_fireok
+        lda #$f0
+        ldx #16
+        jsr fill_row_attr
+        ldx #18
+        jsr fill_row_attr
+        lda #0
+        sta nameidx
+        sta nameidx+1
+        sta nameidx+2
+        sta npos
+        sta hold
+        sta previn
+en_loop jsr en_draw
+        jsr waitframe
+        jsr read_input
+        lda input
+        and #3
+        bne +
+        lda #0
+        sta hold
+        jmp en_fire
++       inc hold
+        bne +
+        dec hold
++       lda hold
+        cmp #1
+        beq en_move
+        cmp #16
+        bcc en_fire
+        and #3
+        bne en_fire
+en_move ldx npos
+        lda input
+        lsr
+        bcc en_left
+        inc nameidx,x       ; right: next letter
+        lda nameidx,x
+        cmp #lettab_end-lettab
+        bcc en_fire
+        lda #0
+        sta nameidx,x
+        jmp en_fire
+en_left dec nameidx,x
+        bpl en_fire
+        lda #lettab_end-lettab-1
+        sta nameidx,x
+en_fire lda input
+        and #8
+        beq +
+        lda previn
+        and #8
+        bne +
+        inc npos
+        lda npos
+        cmp #3
+        bne +
+        jsr en_draw
+        jmp wait_release
++       lda input
+        sta previn
+        jmp en_loop
+
+en_draw ldx #0
+-       stx t4
+        txa
+        asl
+        clc
+        adc #13
+        tax
+        lda #11
+        jsr setcur
+        ldx t4
+        ldy nameidx,x
+        lda lettab,y
+        jsr putch
+        ldx t4
+        txa
+        asl
+        clc
+        adc #13
+        tax
+        lda #12
+        jsr setcur
+        lda #' '
+        ldx t4
+        cpx npos
+        bne +
+        lda #'-'
++       jsr putch
+        ldx t4
+        inx
+        cpx #3
+        bne -
+        lda #$10
+        ldx #11
+        jsr fill_row_attr
+        lda #$70
+        ldx #12
+        jsr fill_row_attr
+        lda npos
+        cmp #3
+        bcs +
+        asl
+        clc
+        adc #13
+        tay
+        lda #1
+        sta cnt
+        lda #$70
+        ldx #11
+        jsr fill_attr
++       rts
+
+; high score table screen.  A = timeout/8 frames.  C=1 if fire was pressed
+show_table
+        sta ttm
+        lda #0
+        sta ttm+1
+        asl ttm
+        rol ttm+1
+        asl ttm
+        rol ttm+1
+        asl ttm
+        rol ttm+1
+        lda #0
+        sta obn
+        jsr build_sprites
+        lda #0
+        sta border
+        jsr cls
+        +PRINTAT 1, 8, s_best
+        lda #$70
+        ldx #1
+        jsr fill_row_attr
+        lda #0
+        sta t5              ; entry
+        sta t3              ; offset
+st_row  lda t5
+        asl
+        clc
+        adc #3
+        sta t2              ; screen row
+        ldx #8
+        jsr setcur
+        lda t5
+        cmp #9
+        bne +
+        lda #'1'
+        jsr putch
+        lda #'0'
+        jmp ++
++       lda #' '
+        jsr putch
+        lda t5
+        clc
+        adc #'1'
+++      jsr putch
+        lda #'.'
+        jsr putch
+        lda #' '
+        jsr putch
+        ldy t3
+        lda hs_table+3,y
+        jsr putch
+        ldy t3
+        lda hs_table+4,y
+        jsr putch
+        ldy t3
+        lda hs_table+5,y
+        jsr putch
+        lda #' '
+        jsr putch
+        lda #' '
+        jsr putch
+        ldy t3
+        lda hs_table+2,y
+        jsr putbcd
+        ldy t3
+        lda hs_table+1,y
+        jsr putbcd
+        ldy t3
+        lda hs_table,y
+        jsr putbcd
+        lda #$30
+        ldy t5
+        bne +
+        lda #$70
++       cpy hs_new
+        bne +
+        lda #$d0
++       ldx t2
+        jsr fill_row_attr
+        lda t3
+        clc
+        adc #6
+        sta t3
+        inc t5
+        lda t5
+        cmp #HS_N
+        beq +
+        jmp st_row
++       +PRINTAT 23, 6, s_press
+        lda #$70
+        sta flasha
+        lda #$07
+        sta flashb
+        ldx #23
+        jsr fill_row_attr
+        lda #23
+        sta flashrow
+st_loop jsr waitframe
+        jsr read_input
+        lda input
+        and #8
+        bne st_fire
+        lda ttm
+        bne +
+        dec ttm+1
++       dec ttm
+        lda ttm
+        ora ttm+1
+        bne st_loop
+        lda #$ff
+        sta flashrow
+        clc
+        rts
+st_fire jsr wait_release
+        lda #$ff
+        sta flashrow
+        sec
+        rts
+
+fname   !raw "JJ.HISCORES"
+fname_end
+scratch !raw "S0:JJ.HISCORES"
+scratch_end
+lettab  !raw "ABCDEFGHIJKLMNOPQRSTUVWXYZ.- "
+lettab_end
+s_best    !raw "THE BEST JUMPERS",0
+s_newhi   !raw "NEW HIGH SCORE!",0
+s_enter   !raw "ENTER YOUR INITIALS",0
+s_lr      !raw "LEFT/RIGHT: CHANGE LETTER",0
+s_fireok  !raw "FIRE: NEXT LETTER",0
+s_saving  !raw "SAVING...",0
+
+; file image: magic + 10 x (score lo, mid, hi BCD, 3 initials)
+hs_file !raw "J1"
+hs_table
+        !byte $00,$20,$00
+        !raw "JIM"
+        !byte $00,$18,$00
+        !raw "ANA"
+        !byte $00,$16,$00
+        !raw "LEO"
+        !byte $00,$14,$00
+        !raw "SOL"
+        !byte $00,$12,$00
+        !raw "MAX"
+        !byte $00,$10,$00
+        !raw "EVA"
+        !byte $00,$08,$00
+        !raw "TEO"
+        !byte $00,$06,$00
+        !raw "PAZ"
+        !byte $00,$04,$00
+        !raw "IVO"
+        !byte $00,$02,$00
+        !raw "BOB"
+hs_file_end
+hs_buf  !fill 64
+bootdev !byte 8
+hs_new  !byte $ff
+nameidx !fill 3
+npos    !byte 0
+hold    !byte 0
+previn  !byte 0
+ttm     !word 0
+ti_idle !word 0
+kzp     !fill 256
+zpsave  !fill 256
 
 ; ===========================================================================
 ;  Data
@@ -3170,7 +3619,6 @@ bcol   !fill 10
 font       !binary "../build/font.bin"
 go_attr    !binary "../build/gameover_attr.bin"
 music_data !binary "../build/music.bin"
-sample     !binary "../build/sample.bin"
 go_title   !binary "../build/gameover_title.bin"
 go_pic     !binary "../build/gameover_pic.bin"
 !align 255, 0

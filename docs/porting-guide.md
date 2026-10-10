@@ -1,49 +1,50 @@
-# Guía para portar Jumping Jim a otra plataforma
+# Porting Jumping Jim to another platform
 
-## Flujo de datos
+## Data flow
 
 ```
 original/JumpingJim_v4.nex
-        │  tools/extract.py           (una sola vez; ya está hecho y versionado)
+        │  tools/extract.py           (run once; already done and committed)
         ▼
-assets/  jumpingjim.json, font.bin, sample_4bit.bin, sample.wav, sprites/*.png, screens/*.png
-        │  platforms/<plataforma>/tools/convert_<plataforma>.py
+assets/  jumpingjim.json, font.bin, sample_4bit.bin, sample.wav, sprites/*.png, screens/*.png,
+         branding/rip_logo.png
+        │  platforms/<platform>/tools/convert_<platform>.py
         ▼
-platforms/<plataforma>/build/   datos en el formato nativo + binario final
+platforms/<platform>/build/   data in the native format + final binary
 ```
 
-Reglas:
-1. **Nunca** leer el `.nex` desde un port: usar sólo `assets/`. Si falta un dato,
-   agregarlo a `tools/extract.py` y regenerar con `make assets`.
-2. La lógica sigue `docs/game-spec.md`. Mantener los nombres de variables y las
-   referencias `$xxxx` a las rutinas originales en los comentarios facilita comparar.
-3. Cada plataforma vive aislada en `platforms/<nombre>/` con su `Makefile`,
-   `README.md`, `src/` y `tools/`. `build/` no se versiona.
+Rules:
+1. **Never** read the `.nex` from a port: use `assets/` only. If something is missing,
+   add it to `tools/extract.py` and regenerate with `make assets`.
+2. The logic follows `docs/game-spec.md`. Keeping the variable names and the `$xxxx`
+   references to the original routines in comments makes comparison easy.
+3. Each platform lives on its own in `platforms/<name>/` with its `Makefile`,
+   `README.md`, `src/` and `tools/`. `build/` is not committed.
 
-## Pasos para una plataforma nueva
+## Steps for a new platform
 
-1. `mkdir -p platforms/<nombre>/{src,tools}` y copiar como plantilla el `Makefile` de C64.
-2. Escribir `convert_<nombre>.py` leyendo `assets/jumpingjim.json`:
-   - **Paleta**: mapear atributos Spectrum (ink/paper/bright) a los colores disponibles.
-   - **Sprites**: vienen en RGB332 (0xE3 = transparente). Decidir cómo reducir colores y
-     cómo espejar (el original espeja por hardware; en C64 se precalculan copias).
-   - **Música**: convertir períodos AY a la unidad del chip destino
-     (`f = 1750000 / (16*período)`). Las filas de las melodías son independientes del chip.
-   - **Logo del título**: se puede dibujar en tiempo real con los segmentos o precalcular
-     los 9 estados posibles (lo que hace C64).
-3. Implementar en este orden (cada paso se puede probar solo): pantalla/texto → pisos y
-   huecos → jugador → enemigos → colisiones → HUD → título → game over → sonido.
-4. Agregar un objetivo en el `Makefile` raíz.
+1. `mkdir -p platforms/<name>/{src,tools}` and copy the C64 `Makefile` as a template.
+2. Write `convert_<name>.py`, reading `assets/jumpingjim.json`:
+   - **Palette**: map Spectrum attributes (ink/paper/bright) to the available colours.
+   - **Sprites**: stored as RGB332 (0xE3 = transparent). Decide how to reduce colours and
+     how to mirror them (the original mirrors in hardware; the C64 uses precomputed copies).
+   - **Music**: convert AY periods to the target chip's units
+     (`f = 1750000 / (16*period)`). The tune rows themselves are chip independent.
+   - **Title logo**: draw it in real time from the segments, or precompute the 9 possible
+     states (what the C64 does).
+3. Implement in this order (each step can be tested on its own): screen/text → floors and
+   gaps → player → enemies → collisions → HUD → title → game over → sound.
+4. Add a target to the root `Makefile` and to `tools/release.sh`.
 
-## Decisiones típicas por plataforma
+## Typical per-platform decisions
 
-| Tema | Spectrum Next original | Commodore 64 | Ideas para otras |
+| Topic | Original Spectrum Next | Commodore 64 | Ideas for others |
 |---|---|---|---|
-| Pantalla | ULA 256×192 + atributos | bitmap hires (color por celda = atributos) | Spectrum 48/128: igual que el original; MSX2/Amstrad: modo bitmap |
-| Sprites | 128 sprites HW de 16×16, 256 colores | 8 sprites: multiplexor + 2 capas (multicolor + contorno hires) | software sprites con máscara |
-| Espejado | por hardware | copias precalculadas | idem |
-| Sonido | AY | SID (voz 3 = canal C + batería + efectos) | AY directo en MSX/CPC/Spectrum 128 |
-| CPU | Z80 a 28 MHz | 6510 a 1 MHz (rotar los pisos se reemplazó por pintar sólo los bordes del hueco) | |
+| Screen | ULA 256×192 + attributes | hires bitmap (per-cell colour = attributes) | Spectrum 48/128: same as the original; MSX2/Amstrad: bitmap mode |
+| Sprites | 128 hardware 16×16 sprites, 256 colours | 8 sprites: multiplexer + 2 layers (multicolour + hires outline) | masked software sprites |
+| Mirroring | in hardware | precomputed copies | same |
+| Sound | AY | SID (voice 3 = channel C + drums + effects) | AY directly on MSX/CPC/Spectrum 128 |
+| CPU | Z80 at 28 MHz | 6510 at 1 MHz (rotating the floors was replaced by drawing only the gap edges) | |
 
-Candidatas naturales: ZX Spectrum 128K (casi directo: misma pantalla y chip AY),
-Amstrad CPC y MSX (AY + Z80: reutiliza la música tal cual), Commander X16, NES.
+Natural candidates: ZX Spectrum 128K (almost direct: same screen and AY chip),
+Amstrad CPC and MSX (AY + Z80: the music can be reused as is), Commander X16, NES.

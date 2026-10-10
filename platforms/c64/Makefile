@@ -32,4 +32,17 @@ run: $(PRG)
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all test promo run clean
+# release packaging, used by tools/release.sh:  make dist VERSION=v1.0.0
+VERSION ?= dev
+DIST    := ../../dist
+dist: $(PRG) $(D64)
+	mkdir -p $(DIST)/c64
+	cp $(D64) $(DIST)/jumpingjim-c64-$(VERSION).d64
+	cp $(PRG) $(DIST)/jumpingjim-c64-$(VERSION).prg
+	cp $(D64) $(PRG) $(DIST)/c64/
+	cp ../../LICENSE ../../NOTICE.md $(DIST)/c64/
+	printf 'Jumping Jim - Commodore 64 %s\n\nLOAD"*",8,1 and RUN (or open the .d64 in VICE).\nKeys: O/Z left, P/X right, Q/SPACE jump. Joystick in port 2 or 1.\n\nOriginal game by roman126 - https://roman126.itch.io/jumping-jim-zx-spectrum-next\nC64 port by Carlos Zayas (AI-assisted) - https://github.com/czayas/jumpingjim\n' $(VERSION) > $(DIST)/c64/README.txt
+	cd $(DIST)/c64 && rm -f ../jumpingjim-c64-$(VERSION).zip && zip -q -r ../jumpingjim-c64-$(VERSION).zip .
+	rm -rf $(DIST)/c64
+
+.PHONY: all test promo run clean dist

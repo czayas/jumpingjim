@@ -1,5 +1,5 @@
 # Jumping Jim - multi-platform build
-.PHONY: all assets c64 clean
+.PHONY: all assets c64 clean release
 
 all: c64
 
@@ -11,3 +11,7 @@ c64:
 
 clean:
 	$(MAKE) -C platforms/c64 clean
+
+# publish a GitHub release:  make release VERSION=v1.0.0
+release:
+	tools/release.sh $(VERSION)

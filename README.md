@@ -1,89 +1,78 @@
 # Jumping Jim — Commodore 64
 
-![Jumping Jim C64 en acción](promo/preview.gif)
+![Jumping Jim on the C64](promo/preview.gif)
 
-**Jumping Jim** es un juego de plataformas en la línea del clásico *Jumping Jack*: Jim tiene
-que subir siete pisos saltando por huecos que se desplazan, sin golpearse la cabeza contra
-el techo y esquivando a ocho tipos de enemigos. Este repositorio contiene el **port completo
-para Commodore 64**, escrito en ensamblador 6502, y una estructura pensada para llevarlo a
-otras plataformas.
+**Jumping Jim** is a platform game in the spirit of the classic *Jumping Jack*: Jim has
+to climb seven floors by jumping through gaps that keep sliding sideways, without
+bumping his head on the ceiling and while dodging eight kinds of baddies. This repository
+holds the **complete Commodore 64 port**, written in 6502 assembly, and a structure
+designed to take the game to other platforms.
 
-> *English summary below.*
-
-🎬 **Video de 44 segundos:** [`promo/jumpingjim_c64_gameplay.mp4`](promo/jumpingjim_c64_gameplay.mp4)
+🎬 **44-second gameplay video:** [`promo/jumpingjim_c64_gameplay.mp4`](promo/jumpingjim_c64_gameplay.mp4)
 
 | | | |
 |---|---|---|
-| ![Título](promo/01_titulo.png) | ![Nivel 2](promo/03_nivel2_sunset.png) | ![Caída con arcoíris](promo/04_nivel5_caida_arcoiris.png) |
-| ![Nivel 8](promo/05_nivel8_aurora.png) | ![Game over](promo/06_game_over.png) | ![Mejores puntajes](promo/07_mejores_puntajes.png) |
+| ![Title](promo/01_title.png) | ![Level 2](promo/03_level2_sunset.png) | ![Rainbow fall](promo/04_level5_rainbow_fall.png) |
+| ![Level 8](promo/05_level8_aurora.png) | ![Game over](promo/06_game_over.png) | ![High scores](promo/07_high_scores.png) |
 
-## Jugar
+## Play
 
-1. Compilá con `make` (ver más abajo) o usá el `.d64` de la sección *Releases* si está publicado.
-2. En el C64 o en VICE: `LOAD"*",8,1` y `RUN`.
+1. Download the `.d64` from [Releases](../../releases), or build it with `make` (see below).
+2. On a C64 or in VICE: `LOAD"*",8,1` and `RUN`.
 
-**Controles:** teclado **O/Z** izquierda, **P/X** derecha, **Q/ESPACIO** saltar,
-**ESPACIO/RETURN** empezar · joystick en **puerto 2 o 1** (arriba o fuego = saltar).
+**Controls:** keyboard **O/Z** left, **P/X** right, **Q/SPACE** jump,
+**SPACE/RETURN** start · joystick in **port 2 or 1** (up or fire = jump).
 
-**Novedades del port:**
-- **Tabla de los 10 mejores puntajes**, con iniciales al estilo arcade. Se graba en el disco como `JJ.HISCORES`.
-- **Efecto "transportador":** los enemigos que caen hacia la planta baja se desmaterializan y reaparecen arriba.
-- **Movimiento ajustado:** Jim y el robot detenido se mueven sincronizados con los pisos deslizantes.
-- **Música SID:** la música original del chip AY convertida al SID, y una presentación con el logo de Retro Informática Paraguay.
+**New in this port:**
+- **Top-10 high score table**, with arcade-style initials. It is saved on the disk as `JJ.HISCORES`.
+- **"Transporter" effect:** enemies falling towards the ground floor dematerialise and reappear at the top.
+- **Tuned movement:** Jim and the stopped robot stay in sync with the sliding floors.
+- **SID music:** the original AY music converted to the SID, plus a Retro Informática Paraguay splash screen.
 
-Detalles técnicos en [`platforms/c64/README.md`](platforms/c64/README.md).
+Technical details in [`platforms/c64/README.md`](platforms/c64/README.md).
 
-## Compilar
+## Build
 
-Requisitos: `python3` (+ Pillow), [`acme`](https://sourceforge.net/projects/acme-crossass/) y
-VICE (`c1541`, `x64sc`). En Manjaro: `sudo pacman -S acme vice`.
+Requirements: `python3` (+ Pillow), [`acme`](https://sourceforge.net/projects/acme-crossass/)
+and VICE (`c1541`, `x64sc`). On Manjaro: `sudo pacman -S acme vice`.
 
 ```sh
-make            # todos los ports (hoy: C64) → platforms/c64/build/jumpingjim.d64 / .prg
-make assets     # regenerar assets/ desde el .nex original
-make -C platforms/c64 run     # probarlo en VICE
-make -C platforms/c64 promo   # versión con piloto automático (para grabar demos)
+make                        # all ports (currently: C64) → platforms/c64/build/jumpingjim.d64 / .prg
+make assets                 # regenerate assets/ from the original .nex
+make -C platforms/c64 run   # try it in VICE
+make -C platforms/c64 promo # autopilot build (for recording demos)
+make release VERSION=v1.0.0 # build, tag and publish a GitHub release (see tools/release.sh)
 ```
 
-## Estructura (pensada para portar a otras plataformas)
+## Repository layout (ready for more ports)
 
 ```
-original/        binario original del ZX Spectrum Next (.nex): la referencia
-tools/extract.py extrae todos los datos del .nex a un formato neutral
-assets/          datos neutrales: jumpingjim.json (tablas, niveles, música, efectos,
-                 logo, textos), fuente, voz (4 bits y WAV), sprites en PNG, logo RIP
-docs/            game-spec.md (reglas y lógica completas), porting-guide.md
-platforms/c64/   el port de Commodore 64: src/, tools/convert_c64.py, Makefile
-promo/           capturas, video y GIF promocionales
+original/        the original ZX Spectrum Next binary (.nex): the reference
+tools/           extract.py dumps all game data to a neutral format; release.sh publishes releases
+assets/          neutral data: jumpingjim.json (tables, levels, music, effects, logo, texts),
+                 font, voice (4-bit and WAV), sprites as PNG, RIP logo
+docs/            game-spec.md (complete rules and logic), porting-guide.md
+platforms/c64/   the Commodore 64 port: src/, tools/convert_c64.py, Makefile
+promo/           promotional screenshots, video and GIF
 ```
 
-¿Querés portarlo a otra máquina? Empezá por [`docs/porting-guide.md`](docs/porting-guide.md)
-y [`docs/game-spec.md`](docs/game-spec.md).
+Want to port it to another machine? Start with [`docs/porting-guide.md`](docs/porting-guide.md)
+and [`docs/game-spec.md`](docs/game-spec.md).
 
-## Acerca de
+## About
 
-- **Juego original:** [*Jumping Jim* para ZX Spectrum Next](https://roman126.itch.io/jumping-jim-zx-spectrum-next),
-  de **roman126**. Es una reinterpretación, hecha con asistencia de IA, del clásico *Jumping Jack*
-  (Imagine Software, 1983) para ZX Spectrum. El diseño, los gráficos, la música y el código
-  original le pertenecen. Este port se publica **con su permiso**. ¡Gracias, roman126!
-- **Port para Commodore 64:** Carlos Zayas ([@czayas](https://github.com/czayas)), desarrollado
-  con la asistencia de IA (Claude, de Anthropic): ingeniería inversa del código Z80,
-  traducción a 6502 y conversión de gráficos y sonido.
-- **Retro Informática Paraguay (RIP):** comunidad paraguaya dedicada a las computadoras
-  clásicas. Seguí sus videos en su [canal de YouTube](TODO-ENLACE-YOUTUBE).
+- **Original game:** [*Jumping Jim* for the ZX Spectrum Next](https://roman126.itch.io/jumping-jim-zx-spectrum-next)
+  by **roman126**, an AI-assisted reimagining of the classic *Jumping Jack*
+  (Imagine Software, 1983) for the ZX Spectrum. The design, graphics, music and original
+  code are his. This port is published **with his permission** — thank you, roman126!
+- **Commodore 64 port:** Carlos Zayas ([@czayas](https://github.com/czayas)), developed
+  with the assistance of artificial intelligence (Claude, by Anthropic): reverse engineering
+  of the Z80 code, translation to 6502, and conversion of graphics and sound.
+- **Retro Informática Paraguay (RIP):** a Paraguayan community devoted to classic
+  computers. Follow their videos on their [YouTube channel](https://www.youtube.com/@retroinfopy).
 
----
+## License
 
-## English summary
-
-A complete **Commodore 64 port** of *Jumping Jim*, roman126's AI-assisted ZX Spectrum Next
-take on *Jumping Jack*. The game was reverse-engineered from the original `.nex` binary and
-rewritten in 6502 assembly (ACME). Extras over the original: a disk-saved top-10 high score
-table, a "transporter" effect for enemies, floor-synchronised movement and SID music.
-
-The repository is organised for further ports: `tools/extract.py` dumps all game data to
-platform-neutral `assets/`, and `docs/game-spec.md` documents the complete game logic.
-
-Original game by **roman126** —
-<https://roman126.itch.io/jumping-jim-zx-spectrum-next> — ported with his permission.
-C64 port by Carlos Zayas, with AI assistance, for **Retro Informática Paraguay**.
+Free software under the [MIT License](LICENSE), AI-assisted. The original game content
+(design, graphics, music) belongs to roman126 and is used with permission; see
+[`NOTICE.md`](NOTICE.md) for the details.

@@ -10,6 +10,7 @@ Requisitos: `python3` (Pillow opcional, sólo para vistas previas), `acme`, `c15
 make          # build/jumpingjim.prg y build/jumpingjim.d64
 make run      # abre en x64sc
 make test     # build/test.prg con entrada automática (salta y camina sola)
+make promo    # build/promo.prg: piloto automático que juega solo (para grabar videos)
 ```
 En Manjaro: `sudo pacman -S acme vice` (o desde AUR si no está en los repos).
 
@@ -41,8 +42,7 @@ sin tocar nada, se muestra la tabla.
   pintan/borran sólo los píxeles de los bordes del hueco.
 - **Sonido**: reproductor AY traducido a SID. Voz 1 y 2 = canales A y B (pulso), voz 3 =
   canal C (triángulo) compartida con batería y efectos (prioridad efecto > batería > música).
-  Las envolventes de volumen se aproximan con ADSR. La voz digitalizada del título se
-  reproduce por `$D418` a ~8 kHz (con el truco de offset DC para que suene en el 8580).
+  Las envolventes de volumen se aproximan con ADSR.
 - **Sincronía Jim/pisos** (cambio respecto del original): Jim es arrastrado sólo en los
   cuadros en que los pisos realmente avanzan (en el original, en los niveles 1–2 iba al
   doble de velocidad que el hueco), también en la cima con los brazos en alto, y el hueco

@@ -714,16 +714,190 @@ read_input
         inc tframe
         bne +
         inc tframe+1
-+       lda tframe
++
+!ifdef PROMO {
+        lda tframe+1        ; promo video: let the title run ~5 s first
+        beq +
+}
+        lda tframe
         and #63
         cmp #2
         bcs +
         lda #8              ; start / continue pulse
         ora t1
         sta t1
-+       lda #TEST           ; TEST=5: jump + right held
++
+!if TEST = 7 {
+        ; "autopilot" for demos: jump when the gap above is overhead,
+        ; otherwise walk towards it
+        lda t1
+        sta t5
+        lda pstate
+        cmp #1
+        bne bot_ground
+        ; airborne: once the head is through the gap, steer onto solid floor
+        ldy pfloor
+        cpy #6
+        bcc bt1
+        jmp bot_done
+bt1
+        iny
+        lda floor_y,y
+        clc
+        adc #19
+        cmp py
+        bcs bt2
+        jmp bot_done
+bt2
+        lda gaplen,y
+        lsr
+        sta t3
+        lda px
+        clc
+        adc #4
+        sec
+        sbc gapstart,y
+        cmp gaplen,y
+        bcc bt99
+        jmp bot_done        ; already above solid floor
+bt99
+        cmp t3
+        bcc +
+        lda #1              ; nearer the right edge
+        ora t5
+        sta t5
+        jmp bot_done
++       lda #2
+        ora t5
+        sta t5
+        jmp bot_done
+bot_ground
+        lda pstate
+        beq bt3
+        jmp bot_done
+bt3
+        ; flee from a nearby baddie on our floor
+        lda pfloor
+        jsr bot_near
+        bcs ++
+        bmi +
+        lda #2              ; it is to the right: go left
+        ora t5
+        sta t5
+        jmp bot_done
++       lda #1
+        ora t5
+        sta t5
+        jmp bot_done
+++      ldy pfloor
+        cpy #6
+        bcc bt4
+        jmp bot_done
+bt4
+        iny
+        tya
+        jsr bot_near        ; somebody waiting above? don't jump yet
+        bcs bt5
+        jmp bot_done
+bt5
+        ldy pfloor
+        iny
+        ; jump only when Jim's centre is in the middle half of the gap above
+        lda gaplen,y
+        lsr
+        lsr
+        sta t3              ; gl/4
+        lda px
+        clc
+        adc #8
+        sec
+        sbc gapstart,y
+        sec
+        sbc t3
+        sta t4              ; rel - gl/4
+        lda t3
+        asl
+        cmp t4              ; inside if rel-gl/4 < gl/2
+        bcc bot_walk
+        beq bot_walk
+        lda #4
+        ora t5
+        sta t5
+        jmp bot_done
+bot_walk                    ; walk towards the gap above, never into our own gap
+        lda gaplen,y
+        lsr
+        clc
+        adc gapstart,y
+        sec
+        sbc px
+        sec
+        sbc #8
+        cmp #4              ; close enough: just wait
+        bcs bt6
+        jmp bot_done
+bt6
+        cmp #$fd
+        bcc bt7
+        jmp bot_done
+bt7
+        ldx #3
+        ora #0
+        bpl +
+        ldx #$fd
++       stx t4              ; step
+        ldy pfloor
+        beq ++
+        lda #7
+        sta gw
+        lda px
+        clc
+        adc t4
+        clc
+        adc #4
+        jsr in_gap
+        bcc bot_done        ; would fall: wait
+++      lda #1
+        ldx t4
+        bpl +
+        lda #2
++       ora t5
+        sta t5
+bot_done
+        lda t5
+        sta t1
+        jmp bot_end
+; C=0 if an enemy on floor A is within 30 px (A = signed distance enemy-px)
+bot_near
+        sta t3
+        ldx #7
+-       lda e_state,x
+        cmp #1
+        bne +
+        lda e_floor,x
+        cmp t3
+        bne +
+        lda e_x,x
+        sec
+        sbc px
+        clc
+        adc #26
+        cmp #52
+        bcs +
+        sec
+        sbc #26
+        clc
+        rts
++       dex
+        bpl -
+        sec
+        rts
+bot_end
+} else {
+        lda #TEST           ; TEST=5: jump + right held
         ora t1
         sta t1
+}
 }
         lda t1
         sta input
@@ -1306,9 +1480,16 @@ draw_hud
 new_game
         lda #3
         sta lives
+!ifdef STARTLEVEL {
+        lda #STARTLEVEL
+        sta level
+        lda #STARTBCD
+        sta levelbcd
+} else {
         lda #1
         sta level
         sta levelbcd
+}
         lda #0
         sta score
         sta score+1

@@ -19,6 +19,7 @@ assets/          datos neutrales: jumpingjim.json (tablas, niveles, música, efe
                  logo, textos), fuente, voz (4 bits y WAV), PNG de referencia
 docs/            game-spec.md (reglas y lógica completas), porting-guide.md
 platforms/<x>/   un port por plataforma: src/, tools/convert_<x>.py, Makefile, README
+promo/           capturas y video promocionales (C64)
 ```
 
 ## Compilar

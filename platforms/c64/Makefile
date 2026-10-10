@@ -18,6 +18,10 @@ $(PRG): src/main.a $(GEN)
 test: $(GEN)
 	cd src && acme -f cbm -DTEST=5 -o ../$(BUILD)/test.prg main.a
 
+# autopilot demo used for the promo video (title for 5 s, then plays from level 2)
+promo: $(GEN)
+	cd src && acme -f cbm -DTEST=7 -DPROMO=1 -DSTARTLEVEL=2 -DSTARTBCD=2 -o ../$(BUILD)/promo.prg main.a
+
 $(D64): $(PRG)
 	rm -f $@
 	c1541 -format "jumping jim,jj" d64 $@ -write $(PRG) "jumping jim" >/dev/null
@@ -28,4 +32,4 @@ run: $(PRG)
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all test run clean
+.PHONY: all test promo run clean

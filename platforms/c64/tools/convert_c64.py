@@ -374,3 +374,76 @@ except ImportError:
 open(os.path.join(OUT, 'tables.a'), 'w').write(A)
 print('player col', player_col, 'drop col', drop_col, 'MC1', MC1)
 print('enemy cols', enemy_cols)
+
+# ---------------------------------------------------------------- RIP splash logo
+# Multicolour bitmap, 17 cells (68 double-wide pixels) x 24 rows, background black.
+def convert_rip(path):
+    from PIL import Image
+    from itertools import combinations
+    src = Image.open(path).convert('RGB').resize((68, 192), Image.LANCZOS)
+    W, H = 68, 192
+    px = [[list(src.getpixel((x, y))) for x in range(W)] for y in range(H)]
+    bm = bytearray(); scr = bytearray(); col = bytearray()
+    for cy in range(H // 8):
+        for cx in range(W // 4):
+            cell = [(x, y) for y in range(cy*8, cy*8+8) for x in range(cx*4, cx*4+4)]
+            # candidate colours: nearest palette colour of each pixel
+            cnt = Counter(nearest(tuple(px[y][x])) for x, y in cell)
+            cands = [c for c, _ in cnt.most_common(6) if c != 0] or [1]
+            best = None
+            for combo in combinations(cands, min(3, len(cands))):
+                pal = [0] + list(combo)
+                e = sum(min(dist(tuple(px[y][x]), PEPTO[c]) for c in pal) for x, y in cell)
+                if best is None or e < best[0]:
+                    best = (e, pal)
+            pal = best[1] + [0] * (4 - len(best[1]))
+            # Floyd-Steinberg inside the cell's 4 colours
+            codes = {}
+            for y in range(cy*8, cy*8+8):
+                for x in range(cx*4, cx*4+4):
+                    old = px[y][x]
+                    k = min(range(4), key=lambda i: dist(tuple(max(0, min(255, int(v))) for v in old), PEPTO[pal[i]]))
+                    codes[(x, y)] = k
+                    newc = PEPTO[pal[k]]
+                    err = [old[i] - newc[i] for i in range(3)]
+                    for dx, dy, f in ((1, 0, 7/16), (-1, 1, 3/16), (0, 1, 5/16), (1, 1, 1/16)):
+                        nx, ny = x + dx, y + dy
+                        if cx*4 <= nx < cx*4+4 and ny < cy*8+8:
+                            for i in range(3):
+                                px[ny][nx][i] += err[i] * f * 0.8
+            for y in range(cy*8, cy*8+8):
+                b = 0
+                for x in range(cx*4, cx*4+4):
+                    b = (b << 2) | codes[(x, y)]
+                bm.append(b)
+            scr.append((pal[1] << 4) | pal[2])
+            col.append(pal[3])
+    w('rip_bitmap.bin', bm); w('rip_screen.bin', scr); w('rip_color.bin', col)
+    try:
+        prev = Image.new('RGB', (W * 2, H))
+        for cy in range(H // 8):
+            for cx in range(W // 4):
+                i = cy * (W // 4) + cx
+                pal = [0, scr[i] >> 4, scr[i] & 15, col[i]]
+                for l in range(8):
+                    b = bm[i * 8 + l]
+                    for p in range(4):
+                        c = PEPTO[pal[(b >> (6 - 2*p)) & 3]]
+                        X = (cx*4 + p) * 2
+                        prev.putpixel((X, cy*8 + l), c); prev.putpixel((X + 1, cy*8 + l), c)
+        prev.resize((W * 6, H * 3), Image.NEAREST).save(os.path.join(OUT, 'preview_rip.png'))
+    except Exception as ex:
+        print('preview failed', ex)
+
+convert_rip(os.path.join(ASSETS, 'branding', 'rip_logo.png'))
+
+# fade-to-black chains for the splash (each colour -> a darker one)
+DARKER = [0, 15, 9, 14, 6, 11, 0, 15, 2, 0, 8, 0, 11, 5, 4, 12]
+fade = []
+for L in range(5):
+    for c in range(16):
+        v = c
+        for _ in range(L):
+            v = DARKER[v]
+        fade.append(v)
+open(os.path.join(OUT, 'tables.a'), 'a').write(asm_bytes('fadetab', fade))

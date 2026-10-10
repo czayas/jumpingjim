@@ -17,6 +17,11 @@ En Manjaro: `sudo pacman -S acme vice` (o desde AUR si no está en los repos).
 ## Cargar en la máquina
 `LOAD"*",8,1` y `RUN` (o arrastrar el .d64/.prg a VICE).
 
+## Presentación
+Al arrancar se muestra el logo de **Retro Informática Paraguay** (bitmap multicolor de
+68×192, convertido desde `assets/branding/rip_logo.png`) con fade in/out mediante tablas de
+oscurecimiento de color; dura unos 3 s y el fuego lo saltea.
+
 ## Tabla de récords
 Al terminar una partida, si el puntaje entra entre los 10 mejores se piden 3 iniciales
 (izquierda/derecha cambian la letra, fuego confirma). La tabla se graba en el disco del que
@@ -61,7 +66,7 @@ sin tocar nada, se muestra la tabla.
 ## Mapa de memoria
 | Rango | Uso |
 |---|---|
-| `$0801–$A8xx` | programa + datos (música, voz, logo precalculado, game over) |
+| `$0801–$B9FF` | programa + datos (música, logo precalculado, game over, logo RIP) |
 | `$C000–$C3FF` | colores del bitmap + punteros de sprites |
 | `$C400–$DE7F` | sprites (copiados al arrancar; I/O se apaga para escribir `$D000+`) |
 | `$E000–$FF3F` | bitmap |

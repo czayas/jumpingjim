@@ -50,7 +50,7 @@ make                        # all ports (currently: C64) → platforms/c64/build
 make assets                 # regenerate assets/ from the original .nex
 make -C platforms/c64 run   # try it in VICE
 make -C platforms/c64 promo # autopilot build (for recording demos)
-make release VERSION=v1.0.0 # build, tag and publish a GitHub release (see tools/release.sh)
+make release VERSION=v1.0.0 # publish releases/jumpingjim-c64-v1.0.0.zip on GitHub
 ```
 
 ## Repository layout (ready for more ports)
@@ -58,6 +58,7 @@ make release VERSION=v1.0.0 # build, tag and publish a GitHub release (see tools
 ```
 original/        the original ZX Spectrum Next binary (.nex): the reference
 tools/           extract.py dumps all game data to a neutral format; release.sh publishes releases
+releases/        ready-made release zips (build one with: make -C platforms/c64 dist VERSION=vX.Y.Z)
 assets/          neutral data: jumpingjim.json (tables, levels, music, effects, logo, texts),
                  font, voice (4-bit and WAV), sprites as PNG, RIP logo
 docs/            game-spec.md (complete rules and logic), porting-guide.md

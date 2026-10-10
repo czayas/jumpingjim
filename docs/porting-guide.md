@@ -34,7 +34,7 @@ Rules:
      states (what the C64 does).
 3. Implement in this order (each step can be tested on its own): screen/text → floors and
    gaps → player → enemies → collisions → HUD → title → game over → sound.
-4. Add a target to the root `Makefile` and to `tools/release.sh`.
+4. Add a target to the root `Makefile` and a `dist` target to the platform `Makefile`.
 
 ## Typical per-platform decisions
 

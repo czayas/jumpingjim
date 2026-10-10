@@ -32,6 +32,13 @@ cd "$ROOT"
 for tool in git make zip; do
     command -v "$tool" >/dev/null || die "'$tool' is not installed"
 done
+# toolchain needed to build the C64 port
+command -v python3 >/dev/null || die "python3 is not installed"
+python3 -c "import PIL" 2>/dev/null ||
+    die "Pillow is missing: 'sudo pacman -S python-pillow' or 'pip install pillow'"
+command -v acme >/dev/null || die "the ACME assembler is not installed. Build it from source:
+    git clone https://github.com/meonwax/acme && make -C acme/src && sudo cp acme/src/acme /usr/local/bin/"
+command -v c1541 >/dev/null || die "c1541 (part of VICE) is not installed: 'sudo pacman -S vice'"
 if [[ "$MODE" != "--dry-run" ]]; then
     command -v gh >/dev/null || die "GitHub CLI 'gh' is not installed (https://cli.github.com)"
     gh auth status >/dev/null 2>&1 || die "not logged in to GitHub: run 'gh auth login'"

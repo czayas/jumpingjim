@@ -33,8 +33,17 @@ Technical details in [`platforms/c64/README.md`](platforms/c64/README.md).
 
 ## Build
 
-Requirements: `python3` (+ Pillow), [`acme`](https://sourceforge.net/projects/acme-crossass/)
-and VICE (`c1541`, `x64sc`). On Manjaro: `sudo pacman -S acme vice`.
+Requirements: `python3` (+ Pillow), the [ACME](https://sourceforge.net/projects/acme-crossass/)
+cross-assembler and VICE (`c1541`, `x64sc`). On Manjaro:
+
+```sh
+# ACME is not in the Manjaro/Arch repositories: build it from source
+git clone https://github.com/meonwax/acme
+make -C acme/src && sudo cp acme/src/acme /usr/local/bin/
+sudo pacman -S vice python-pillow    # VICE provides c1541 and x64sc
+```
+
+To publish releases you also need the GitHub CLI: `sudo pacman -S github-cli && gh auth login`.
 
 ```sh
 make                        # all ports (currently: C64) → platforms/c64/build/jumpingjim.d64 / .prg

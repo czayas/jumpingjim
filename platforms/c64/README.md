@@ -12,7 +12,14 @@ make run      # opens it in x64sc
 make test     # build/test.prg with scripted input (jumps and walks by itself)
 make promo    # build/promo.prg: autopilot that plays on its own (for recording videos)
 ```
-On Manjaro: `sudo pacman -S acme vice` (or from the AUR if they are not in the repos).
+On Manjaro/Arch:
+
+```sh
+# ACME is not in the Manjaro/Arch repositories: build it from source
+git clone https://github.com/meonwax/acme
+make -C acme/src && sudo cp acme/src/acme /usr/local/bin/
+sudo pacman -S vice python-pillow    # VICE provides c1541 and x64sc
+```
 On Debian/Ubuntu: `sudo apt install acme vice` (VICE needs the C64 ROMs installed separately).
 
 ## Loading

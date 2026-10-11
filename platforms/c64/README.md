@@ -37,6 +37,10 @@ disk the game was loaded from and read back at start-up. Without a disk (for exa
 .prg dropped onto VICE) it still works but is lost when the machine is switched off. On the
 title screen the table is shown after ~12 s without input.
 
+## Attract mode and credits
+Without input, the title screen cycles: title (~12 s) → high score table (~8 s) →
+credits (~8 s, with the animated logo) → title. Fire on any of them starts a game.
+
 ## Controls
 - Keyboard: **O/Z** left, **P/X** right, **Q/SPACE** jump, **SPACE/RETURN** start.
 - Joystick in **port 2 or 1**: left/right, up or fire = jump.
@@ -68,6 +72,9 @@ title screen the table is shown after ~12 s without input.
   in sparkles and rematerialises near the ceiling before continuing its fall to floor 5.
   It is harmless meanwhile (as in the original). It uses sprites 122–127, and the
   multiplexer can replace the outline layer with coloured sparkles.
+- **Instant start** (change from the original): the original freezes the game for 130
+  frames on "GET READY!". Here play starts at once: the text stays for the same time while
+  Jim blinks (invulnerable) and can already move.
 - **Disk access**: the game runs with KERNAL and BASIC switched out. To read/write the
   table, the KERNAL's zero page is saved at start-up and temporarily restored
   (`kernal_enter`/`kernal_leave`) with the game's interrupts stopped.

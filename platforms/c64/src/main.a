@@ -1676,8 +1676,14 @@ setup_level
 +       tax
         lda lev_music,x
         jsr start_music
+        ; C64 change: no frozen wait. The game starts at once; "GET READY!" stays
+        ; for 130 frames while Jim blinks (invulnerable) and can already move.
         lda #130
-        jsr waitn
+        sta readyt
+        sta pinv
+        rts
+
+clear_ready
         ldx #1
         jsr clear_row_pix
         ldx #2
@@ -1686,8 +1692,7 @@ setup_level
         ldx #1
         jsr fill_row_attr
         ldx #2
-        jsr fill_row_attr
-        rts
+        jmp fill_row_attr
 
 play    lda #0
         sta gstat
@@ -1702,6 +1707,11 @@ play    lda #0
         lda hudflag
         beq +
         jsr draw_hud
++       lda readyt          ; remove "GET READY!" after its time
+        beq +
+        dec readyt
+        bne +
+        jsr clear_ready
 +       lda gstat
         beq -
         rts
@@ -2558,9 +2568,12 @@ ti_loop jsr waitframe
         bcc +
         lda #50             ; 50*8 = 400 frames
         jsr show_table
-        bcc ++
-        jmp ti_start        ; fire pressed on the table: start the game
-++      jmp title
+        bcs +++
+        lda #50
+        jsr show_credits
+        bcs +++
+        jmp title
++++     jmp ti_start        ; fire pressed on the table or credits: start the game
 +       ; walking Jim and a baddie
         lda t1f
         clc
@@ -3745,6 +3758,116 @@ en_draw ldx #0
         jsr fill_attr
 +       rts
 
+; credits screen with the animated logo.  A = timeout/8 frames.  C=1 if fire
+show_credits
+        sta ttm
+        lda #0
+        sta ttm+1
+        asl ttm
+        rol ttm+1
+        asl ttm
+        rol ttm+1
+        asl ttm
+        rol ttm+1
+        lda #0
+        sta obn
+        jsr build_sprites
+        lda #0
+        sta border
+        jsr cls
+        lda #$ff
+        sta logo_st
+        ; double line under the logo (row 7, lines 2-3), as on the title
+        ldx #7
+        lda bm_lo,x
+        sta fp
+        lda bm_hi,x
+        sta fp+1
+        ldx #32
+-       ldy #2
+        lda #$ff
+        sta (fp),y
+        iny
+        sta (fp),y
+        lda fp
+        clc
+        adc #8
+        sta fp
+        bcc +
+        inc fp+1
++       dex
+        bne -
+        +PRINTAT 9, 7, s_cr1
+        +PRINTAT 10, 8, s_cr2
+        +PRINTAT 13, 11, s_cr3
+        +PRINTAT 14, 3, s_cr4
+        +PRINTAT 17, 13, s_cr5
+        +PRINTAT 18, 4, s_cr6
+        lda #$10
+        ldx #9
+        jsr fill_row_attr
+        ldx #13
+        jsr fill_row_attr
+        ldx #17
+        jsr fill_row_attr
+        lda #$70
+        ldx #10
+        jsr fill_row_attr
+        ldx #14
+        jsr fill_row_attr
+        lda #$30
+        ldx #18
+        jsr fill_row_attr
+        +PRINTAT 22, 6, s_press
+        lda #$70
+        sta flasha
+        lda #$07
+        sta flashb
+        ldx #22
+        jsr fill_row_attr
+        lda #22
+        sta flashrow
+cr_loop jsr waitframe
+        jsr read_input
+        inc tt
+        lda tt
+        and #3
+        bne +
+        jsr rainbow
++       jsr draw_logo
+        inc logo_t
+        lda logo_t
+        cmp #$f0
+        bcc +
+        lda #0
+        sta logo_t
++       lda input
+        and #8
+        bne cr_fire
+        lda ttm
+        bne +
+        dec ttm+1
++       dec ttm
+        lda ttm
+        ora ttm+1
+        bne cr_loop
+        lda #$ff
+        sta flashrow
+        clc
+        rts
+cr_fire jsr wait_release
+        lda #$ff
+        sta flashrow
+        sec
+        rts
+
+s_cr1   !raw "ORIGINAL GAME FROM",0
+s_cr2   !raw "ROMAN126.ITCH.IO",0
+s_cr3   !raw "PORTED BY",0
+s_cr4   !raw "RETRO INFORMATICA PARAGUAY",0
+s_cr5   !raw "VISIT",0
+s_cr6   !raw "YOUTUBE.COM/@RETROINFOPY",0
+
 ; high score table screen.  A = timeout/8 frames.  C=1 if fire was pressed
 show_table
         sta ttm
@@ -3909,6 +4032,7 @@ npos    !byte 0
 hold    !byte 0
 previn  !byte 0
 ttm     !word 0
+readyt  !byte 0
 ti_idle !word 0
 kzp     !fill 256
 zpsave  !fill 256

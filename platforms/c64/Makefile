@@ -1,5 +1,5 @@
 # Jumping Jim - Commodore 64
-# Requires: python3 (+Pillow optional), acme, c1541 (VICE) for the .d64
+# Requires: python3 + Pillow, acme, c1541 (VICE) for the .d64
 ASSETS  := ../../assets
 BUILD   := build
 GEN     := $(BUILD)/tables.a
@@ -8,7 +8,7 @@ D64     := $(BUILD)/jumpingjim.d64
 
 all: $(PRG) $(D64)
 
-$(GEN): $(ASSETS)/jumpingjim.json tools/convert_c64.py
+$(GEN): $(ASSETS)/jumpingjim.json $(wildcard $(ASSETS)/backgrounds/*.png) tools/convert_c64.py ../../tools/lzpack.py
 	python3 tools/convert_c64.py $(ASSETS) $(BUILD)
 
 # the .lbl file (addresses of the labels, VICE format) is used by the tests

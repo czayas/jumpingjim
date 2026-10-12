@@ -22,13 +22,16 @@ designed to take the game to other platforms.
 
 **Controls:** keyboard **O/Z** left, **P/X** right, **Q/SPACE** jump,
 **SPACE/RETURN** start · joystick in **port 2 or 1** (up or fire = jump) ·
-**F1** on the title screen switches the extra effects on or off.
+**F1** on the title screen switches the extra effects (backgrounds and screen shake) on or off.
 
 **New in this port:**
 - **Top-10 high score table**, with arcade-style initials. It is saved on the disk as `JJ.HISCORES`.
 - **"Transporter" effect:** enemies falling towards the ground floor dematerialise and reappear at the top.
 - **Tuned movement:** Jim and the stopped robot stay in sync with the sliding floors.
 - **SID music:** the original AY music converted to the SID, plus a Retro Informática Paraguay splash screen.
+- **A picture behind every level** (can be switched off with F1): a starry night with a
+  big moon, a sunset over the sea, the deep sea, a castle under a blood moon, misty
+  mountains, a city at dusk, a volcano and the northern lights, one for each colour scheme.
 - **Screen shake** (can be switched off with F1): the screen shakes when Jim bumps his head
   or lands after a fall, and the baddies give a little hop. Only the picture changes; the
   game itself plays exactly as before.
@@ -64,10 +67,12 @@ make release VERSION=v1.0.0 # publish releases/jumpingjim-c64-v1.0.0.zip on GitH
 ```
 original/        the original ZX Spectrum Next binary (.nex): the reference
 tools/           extract.py dumps all game data to a neutral format; release.sh publishes releases;
-                 vice_harness.py drives VICE for the automated tests
+                 vice_harness.py drives VICE for the automated tests; lzpack.py packs data;
+                 backgrounds/ draws the level pictures
 releases/        ready-made release zips (build one with: make -C platforms/c64 dist VERSION=vX.Y.Z)
 assets/          neutral data: jumpingjim.json (tables, levels, music, effects, logo, texts),
-                 font, voice (4-bit and WAV), sprites as PNG, RIP logo
+                 font, voice (4-bit and WAV), sprites as PNG, RIP logo, backgrounds/ (the
+                 level pictures, made for this port)
 docs/            game-spec.md (complete rules and logic), porting-guide.md, testing.md
 platforms/c64/   the Commodore 64 port: src/, tools/convert_c64.py, tests/, Makefile
 promo/           promotional screenshots, video and GIF

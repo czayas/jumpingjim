@@ -86,6 +86,17 @@ Compared with v1.0.1, logic clock, all three scenarios:
 - effects on: the pictures differ in addition only in the 6 to 24 frames after a head
   bump or a fall.
 
+### Checks of the backgrounds and the packed data (branch v1.1.0-dev)
+
+- game logic: identical to v1.0.1 (logic clock, the three scenarios);
+- effects off: same pictures as with the shake stage, i.e. the original levels;
+- title and credits (logo unpacked on the fly): identical pictures to the previous stage;
+- sprites after start-up (unpacked): byte for byte the same as v1.0.1;
+- each of the eight backgrounds, read back from the C64 memory once the level is set up:
+  0 pixels different from its master PNG (the floor lines left out);
+- title speed: 467 loop iterations in the first 590 frames (v1.0.1: 470);
+- loading from the .d64 with true drive emulation and saving `JJ.HISCORES`: works.
+
 ## Baseline measurements, v1.0.1
 
 (The shake adds about 1 to 2 % of a frame to the game loop.)

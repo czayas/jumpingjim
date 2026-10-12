@@ -359,6 +359,7 @@ states.append(logo_state(7, 0)); states.append(logo_state(7, 1))
 for st in states:
     blob += lines_to_cells([st[i*32:i*32+32] for i in range(48)], 32)
 w('logo.bin', blob)
+LOGO_CELLS = bytes(blob)     # packed further below (logo.pk)
 try:
     from PIL import Image
     im = Image.new('L', (256, 48 * 9 + 9 * 4))
@@ -447,3 +448,113 @@ for L in range(5):
             v = DARKER[v]
         fade.append(v)
 open(os.path.join(OUT, 'tables.a'), 'a').write(asm_bytes('fadetab', fade))
+
+# ---------------------------------------------------------------- packed data
+# Title logo states and level backgrounds, packed with tools/lzpack.py and
+# unpacked by the game (routine 'unpack') straight into the bitmap: whole
+# 320-byte bitmap rows / 40-byte colour rows, with the side columns skipped.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'tools'))
+from lzpack import pack, unpack
+
+def bitmap_rows(rows):
+    """rows: list of 256-byte middle parts or None (= skip the whole row)."""
+    data, skip = bytearray(), []
+    for r in rows:
+        if r is None:
+            data += bytes(320); skip += [True] * 320
+        else:
+            data += bytes(32) + bytes(r) + bytes(32)
+            skip += [True] * 32 + [False] * 256 + [True] * 32
+    return data, skip
+
+def colour_rows(rows):
+    data, skip = bytearray(), []
+    for r in rows:
+        data += bytes(4) + bytes(r) + bytes(4)
+        skip += [True] * 4 + [False] * 32 + [True] * 4
+    return data, skip
+
+def packed(data, skip, what):
+    p = pack(data, skip)
+    chk = unpack(p, bytes(len(data)))
+    assert all(chk[k] == data[k] for k in range(len(data)) if not skip[k]), what
+    return p
+
+# title logo, 6 bitmap rows (rows 1-6) per state: the 7 'flying' states are
+# packed; the 2 'wiggle' states (shown 170 frames of every 240, alternating
+# every 4) stay as plain 1536-byte blocks, as fast to copy as before
+logo_pk, logo_tab = bytearray(), []
+for k in range(7):
+    st = LOGO_CELLS[k * 1536:(k + 1) * 1536]
+    logo_tab.append(len(logo_pk))
+    logo_pk += packed(*bitmap_rows([st[r * 256:(r + 1) * 256] for r in range(6)]), 'logo')
+w('logo.pk', logo_pk)
+w('logo_raw.bin', LOGO_CELLS[7 * 1536:9 * 1536])
+
+# sprites: unpacked once at start-up to $C400-$DFFF
+spr = open(os.path.join(OUT, 'sprites.bin'), 'rb').read()
+w('sprites.pk', packed(spr, [False] * len(spr), 'sprites'))
+
+# level backgrounds (assets/backgrounds/scheme<N>_*.png, see
+# tools/backgrounds/): rows 3-22. Each 8x8 cell may hold 2 colours; under a
+# floor line (rows 5, 8 ... 20) only one, as the cell's other colour is the
+# floor's. Rows 0-2 (texts) and 23 (ground) are not part of the background.
+FLOOR_ROWS = [23, 20, 17, 14, 11, 8, 5]
+def load_background(scheme, pal):
+    from PIL import Image
+    import glob
+    path = glob.glob(os.path.join(ASSETS, 'backgrounds', 'scheme%d_*.png' % (scheme + 1)))
+    if not path:
+        return None
+    im = Image.open(path[0]).convert('RGB')
+    assert im.size == (256, 192), path[0]
+    px = im.load()
+    cache = {}
+    def idx(x, y):
+        c = px[x, y]
+        if c not in cache:
+            cache[c] = nearest(c)
+        return cache[c]
+    bm_rows, col_rows = [], []
+    for r in range(3, 23):
+        cols, bits = [], bytearray()
+        for c in range(32):
+            if r in FLOOR_ROWS:
+                fl = FLOOR_ROWS.index(r)
+                vals = {idx(c * 8 + x, r * 8 + y) for y in range(3, 8) for x in range(8)}
+                if len(vals) != 1:
+                    sys.exit('%s: cell %d,%d under a floor line has %d colours (1 allowed)'
+                             % (path[0], c, r, len(vals)))
+                ink = attr2c64(pal['floor_attr'][fl]) >> 4
+                cols.append((ink << 4) | vals.pop())
+            else:
+                cnt = Counter(idx(c * 8 + x, r * 8 + y) for y in range(8) for x in range(8))
+                if len(cnt) > 2:
+                    sys.exit('%s: cell %d,%d has %d colours (2 allowed)' % (path[0], c, r, len(cnt)))
+                order = [v for v, _ in cnt.most_common()]
+                paper, ink = order[0], order[-1]
+                cols.append((ink << 4) | paper)
+                for y in range(8):
+                    b = 0
+                    for x in range(8):
+                        b = (b << 1) | (1 if ink != paper and idx(c * 8 + x, r * 8 + y) == ink else 0)
+                    bits.append(b)
+        bm_rows.append(None if r in FLOOR_ROWS else bits)
+        col_rows.append(cols)
+    return (packed(*bitmap_rows(bm_rows), path[0]), packed(*colour_rows(col_rows), path[0]))
+
+bg_pk, bg_tab = bytearray(), []
+for scheme, pal in enumerate(PALS):
+    bg = load_background(scheme, pal)
+    if bg is None:
+        sys.exit('missing assets/backgrounds/scheme%d_*.png' % (scheme + 1))
+    for part in bg:
+        bg_tab.append(len(bg_pk))
+        bg_pk += part
+w('bg.pk', bg_pk)
+open(os.path.join(OUT, 'tables.a'), 'a').write(
+    'logo_tab\n\t!word ' + ','.join('logo_pk+%d' % o for o in logo_tab) + '\n' +
+    'bg_tab   ; bitmap, colours for each colour scheme\n\t!word ' +
+    ','.join('bg_pk+%d' % o for o in bg_tab) + '\n')
+print('packed: logo %d bytes + 3072 plain (was %d), sprites %d (was %d), backgrounds %d' % (
+    len(logo_pk), len(LOGO_CELLS), os.path.getsize(os.path.join(OUT, 'sprites.pk')), len(spr), len(bg_pk)))

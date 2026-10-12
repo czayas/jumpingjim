@@ -162,27 +162,18 @@ start   jsr hs_boot         ; load JJ.HISCORES from disk (KERNAL still active)
         lda #0
         sta $d020
         sta $d021
-        ; ---- copy sprites to $c400.. ($d000-$dfff part needs I/O off)
+        ; ---- unpack the sprites to $c400.. ($d000-$dfff part needs I/O off)
         lda #$34
         sta $01
-        lda #<sprite_data
+        lda #<sprites_pk
         sta src
-        lda #>sprite_data
+        lda #>sprites_pk
         sta src+1
         lda #<SPRDATA
         sta dst
         lda #>SPRDATA
         sta dst+1
-        ldx #>(SPRITE_LEN+255)
-        ldy #0
--       lda (src),y
-        sta (dst),y
-        iny
-        bne -
-        inc src+1
-        inc dst+1
-        dex
-        bne -
+        jsr unpack
         lda #$35
         sta $01
         ; ---- sprites
@@ -1326,7 +1317,11 @@ df_cell lda #$ff
         dec t5
         bne -
 df_attr ldx t4
-        lda palidx
+        beq +
+        lda fx_on           ; with a background, the colours of the floor rows
+        beq +               ; come with it (floor ink + background paper)
+        rts
++       lda palidx
         asl
         asl
         asl
@@ -1575,7 +1570,10 @@ setup_level
         tay
         lda lev_band,y
         sta bandcol
-        ; gap length base = $2c - 2*min(level-1,8)
+        lda fx_on           ; (addition) picture behind the floors
+        beq +
+        jsr draw_bg
++        ; gap length base = $2c - 2*min(level-1,8)
         lda level
         sec
         sbc #1
@@ -2488,6 +2486,114 @@ mo_enext
 ; ===========================================================================
 ;  Title screen (Z80 $8d1c)
 ; ===========================================================================
+;  unpack: LZ data (tools/lzpack.py) from src to dst, straight into place.
+;  Tokens: 0 end; 1-127 literal bytes; $80 n: leave n bytes as they are;
+;  $81-$bf copy t-126 bytes from 'offset' (2 bytes) back; $c0-$ff fill t-189
+;  bytes with the next byte. Uses fp, X, Y.
+; ===========================================================================
+unpack  ldy #0
+        lda (src),y
+        beq up_done
+        inc src
+        bne +
+        inc src+1
++       cmp #$80
+        beq up_skip
+        bcc up_lit
+        cmp #$c0
+        bcs up_fill
+        sbc #$7d            ; (C=0 here: subtracts 126) copy length
+        tax
+        lda dst             ; fp = dst - offset
+        sec
+        sbc (src),y
+        sta fp
+        iny
+        lda dst+1
+        sbc (src),y
+        sta fp+1
+        lda src
+        clc
+        adc #2
+        sta src
+        bcc +
+        inc src+1
++       ldy #0
+-       lda (fp),y
+        sta (dst),y
+        iny
+        dex
+        bne -
+        beq up_adv
+up_fill sbc #189            ; (C=1) fill length
+        tax
+        lda (src),y         ; the value
+        inc src
+        bne +
+        inc src+1
++
+-       sta (dst),y
+        iny
+        dex
+        bne -
+        beq up_adv
+up_lit  tax                 ; literal run
+-       lda (src),y
+        sta (dst),y
+        iny
+        dex
+        bne -
+        tya
+        clc
+        adc src
+        sta src
+        bcc up_adv
+        inc src+1
+        jmp up_adv
+up_skip lda (src),y         ; skip n destination bytes
+        tay
+        inc src
+        bne up_adv
+        inc src+1
+up_adv  tya                 ; dst += Y
+        clc
+        adc dst
+        sta dst
+        bcc unpack
+        inc dst+1
+        jmp unpack
+up_done rts
+
+; level background (addition): bitmap and colours of rows 3-22 for the
+; colour scheme palidx (the floors are drawn over it afterwards)
+draw_bg lda palidx
+        asl
+        asl
+        tax
+        lda bg_tab,x
+        sta src
+        lda bg_tab+1,x
+        sta src+1
+        lda #<(BITMAP+3*320)
+        sta dst
+        lda #>(BITMAP+3*320)
+        sta dst+1
+        jsr unpack
+        lda palidx
+        asl
+        asl
+        tax
+        lda bg_tab+2,x
+        sta src
+        lda bg_tab+3,x
+        sta src+1
+        lda #<(SCREEN+3*40)
+        sta dst
+        lda #>(SCREEN+3*40)
+        sta dst+1
+        jmp unpack
+
+; ===========================================================================
 ;  Extra effects (additions, not in the original; F1 on the title turns
 ;  them off): the screen shakes when Jim bumps his head or lands after a
 ;  fall, and the baddies give a little hop. Only the drawing changes: the
@@ -2843,38 +2949,46 @@ draw_logo
         bne +
         rts
 +       sta logo_st
-        ; src = logo + state*1536
-        sta t1
-        lda #0
+        cmp #7
+        bcs dl_raw
+        asl                 ; states 0-6: unpack into bitmap rows 1-6
+        tax
+        lda logo_tab,x
         sta src
-        lda t1
-        asl                 ; *6 pages
+        lda logo_tab+1,x
+        sta src+1
+        lda #<(BITMAP+320)
+        sta dst
+        lda #>(BITMAP+320)
+        sta dst+1
+        jmp unpack
+dl_raw  sbc #7              ; states 7-8 (C=1): plain copy, 6 pages each
+        sta t1
+        asl
         clc
         adc t1
         asl
         clc
-        adc #>logo
-        sta src+1
-        lda #<logo          ; logo is page aligned
-        sta src
-        lda bm_lo+1
-        sta dst
+        adc #>logo_raw
+        sta dl_src+2        ; logo_raw is page aligned
+        lda bm_lo+1         ; (self-modifying absolute addressing: faster
+        sta dl_dst+1        ;  than the (zp),y copy of v1.0.1)
         lda bm_hi+1
-        sta dst+1
+        sta dl_dst+2
         ldx #6
 dl_row  ldy #0
--       lda (src),y
-        sta (dst),y
+dl_src  lda $ff00,y
+dl_dst  sta $ffff,y
         iny
-        bne -
-        inc src+1
-        lda dst
+        bne dl_src
+        inc dl_src+2
+        lda dl_dst+1
         clc
         adc #<320
-        sta dst
-        lda dst+1
+        sta dl_dst+1
+        lda dl_dst+2
         adc #>320
-        sta dst+1
+        sta dl_dst+2
         dex
         bne dl_row
         rts
@@ -4266,10 +4380,10 @@ rip_color  !binary "../build/rip_color.bin"
 music_data !binary "../build/music.bin"
 go_title   !binary "../build/gameover_title.bin"
 go_pic     !binary "../build/gameover_pic.bin"
+logo_pk    !binary "../build/logo.pk"
 !align 255, 0
-logo       !binary "../build/logo.bin"
-sprite_data
-           !binary "../build/sprites.bin"
-SPRITE_LEN = * - sprite_data
+logo_raw   !binary "../build/logo_raw.bin"
+sprites_pk !binary "../build/sprites.pk"
+bg_pk      !binary "../build/bg.pk"
 end_of_prg
 !if end_of_prg > $c000 { !error "program too large" }

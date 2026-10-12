@@ -35,6 +35,11 @@ Rules:
 3. Implement in this order (each step can be tested on its own): screen/text → floors and
    gaps → player → enemies → collisions → HUD → title → game over → sound.
 4. Add a target to the root `Makefile` and a `dist` target to the platform `Makefile`.
+5. Optional extras (not in the original; each port decides whether it can afford them and
+   should let the player switch them off): the screen shake and the baddies' hop, and the
+   level backgrounds in `assets/backgrounds/` (256x192 PNG, C64 palette, already within
+   the C64 limits of 2 colours per 8x8 cell; other machines convert them to their own
+   palette and limits).
 
 ## Typical per-platform decisions
 

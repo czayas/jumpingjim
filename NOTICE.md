@@ -21,6 +21,10 @@ authorship when redistributing it, and credit roman126.
 The Retro Informática Paraguay logo (`assets/branding/rip_logo.png`) belongs to
 Retro Informática Paraguay.
 
+The level backgrounds (`assets/backgrounds/`) are not part of the original game: they were
+made for this port (drawn by `tools/backgrounds/sketch_backgrounds.py`) and are covered by
+the MIT License like the code.
+
 ## AI assistance
 
 This port was developed with the assistance of artificial intelligence

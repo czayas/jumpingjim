@@ -4,9 +4,12 @@
 Draws the 256x192 backgrounds procedurally with the C64 palette and applies the
 real limits of the C64 screen: 2 colours per 8x8 cell, rows 0-2 left black for
 the texts, and one flat colour under each floor line (that cell shares its
-colour with the floor). Writes bg<N>.png / bg<N>.npz and a mock-up sheet.
+colour with the floor). Writes assets/backgrounds/scheme<N>_<name>.png, one per
+colour scheme (level = scheme, scheme + 8, ...). These PNGs are the masters:
+they can also be retouched by hand with any paint program, as long as they keep
+the limits above (platforms/c64/tools/convert_c64.py checks them).
 
-usage: sketch_backgrounds.py OUTDIR      (needs numpy and Pillow)
+usage: sketch_backgrounds.py [OUTDIR [MOCKUP.png]]     (needs numpy and Pillow)
 """
 import math, os, random, sys
 import numpy as np
@@ -470,15 +473,18 @@ def preview(img, scheme, sprites=True):
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else "."
+    # default output: the art masters used by the ports
+    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "assets", "backgrounds")
     os.makedirs(out, exist_ok=True)
     sheet = Image.new("RGB", (4 * (W * 2 + 8) + 8, 2 * (H * 2 + 8) + 8), (40, 40, 40))
     for i, fn in enumerate(SCENES):
         raw = fn()
         res, ink, paper, changed = resolve(raw, i)
-        print("%-12s pixels changed by the 2-colour rule: %d" % (NAMES[i], changed))
-        np.savez(os.path.join(out, "bg%d.npz" % i), img=res, ink=ink, paper=paper)
-        to_rgb(res).save(os.path.join(out, "bg%d.png" % i))
+        name = "scheme%d_%s.png" % (i + 1, NAMES[i].lower().replace(" ", "_"))
+        print("%-32s pixels changed by the 2-colour rule: %d" % (name, changed))
+        to_rgb(res).save(os.path.join(out, name))
         pv = preview(res, i).resize((W * 2, H * 2), Image.NEAREST)
         sheet.paste(pv, (8 + (i % 4) * (W * 2 + 8), 8 + (i // 4) * (H * 2 + 8)))
-    sheet.save(os.path.join(out, "sheet.png"))
+    if len(sys.argv) > 2:
+        sheet.save(sys.argv[2])

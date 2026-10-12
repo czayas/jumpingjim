@@ -45,7 +45,8 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
 ## Controls
 - Keyboard: **O/Z** left, **P/X** right, **Q/SPACE** jump, **SPACE/RETURN** start.
 - Joystick in **port 2 or 1**: left/right, up or fire = jump.
-- **F1** on the title screen: extra effects on/off (on when the game starts).
+- **F1** on the title screen: extra effects (backgrounds, screen shake) on/off; on when
+  the game starts.
 
 ## Technical notes
 
@@ -74,6 +75,18 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
   in sparkles and rematerialises near the ceiling before continuing its fall to floor 5.
   It is harmless meanwhile (as in the original). It uses sprites 122–127, and the
   multiplexer can replace the outline layer with coloured sparkles.
+- **Level backgrounds** (addition, F1 on the title switches them off): one picture per
+  colour scheme (`assets/backgrounds/scheme<N>_*.png`) fills rows 3-22 behind the floors.
+  As on the rest of the screen each 8x8 cell has 2 colours, and under a floor line only
+  one besides the floor's, so `convert_c64.py` checks the pictures against those limits.
+  They are packed (about 9.5 KB for the eight) and unpacked straight into the bitmap when
+  a level starts; the floors are drawn over them. Rows 0-2 (texts) and the ground stay as
+  in the original. Without them (F1) the level looks exactly as in v1.0.1.
+- **Packed data**: to make room, the title logo states and the sprites are packed too
+  (`tools/lzpack.py`; routine `unpack`, which writes straight into place and can skip
+  bytes, e.g. the side columns). The sprites are unpacked once at start-up; the logo
+  every time its state changes. The two states shown most of the time stay unpacked so
+  that the title runs as fast as in v1.0.1.
 - **Screen shake and hops** (addition, F1 on the title switches them off): when Jim
   bumps his head the screen shakes 1 pixel for 6 frames; when he lands after a fall it
   shakes 2 pixels for 8 + 4 frames per floor fallen (up to 4 floors). Meanwhile every
@@ -99,8 +112,8 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
 ## Memory map
 | Range | Use |
 |---|---|
-| `$0801–$BDFF` | program + data (music, precomputed logo, game over, RIP logo); `$BE00–$BFFF` free |
+| `$0801–$B090` | program + data (music, packed logo, packed sprites, packed backgrounds, game over, RIP logo); `$B091–$BFFF` free (3.9 KB) |
 | `$C000–$C3FF` | bitmap colours + sprite pointers |
-| `$C400–$DFFF` | sprites (copied at start-up; I/O is switched off to write `$D000+`) |
+| `$C400–$DFFF` | sprites (unpacked at start-up; I/O is switched off to write `$D000+`) |
 | `$E000–$FF3F` | bitmap |
 | `$FFFA–$FFFF` | own vectors (KERNAL and BASIC switched out) |

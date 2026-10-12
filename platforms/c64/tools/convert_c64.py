@@ -254,20 +254,43 @@ A += asm_bytes('flash_border_b', [SPEC_B[x & 7] for x in T['border_rainbow']])
 
 # ---------------------------------------------------------------- sound
 CLK_AY = 1750000.0
-PAL = 985248.0
+PAL = 985248.0          # PAL C64 clock (Hz)
+NTSC = 1022727.0        # NTSC C64 clock; the Drean PAL-N runs at 1023440 Hz
+                        # (0.07 % = 1 cent away: it uses the NTSC table too)
+CLK = PAL
 def sidf(period):
     if period == 0:
         return 0
     f = CLK_AY / (16.0 * period)
-    return min(0xFFFF, int(round(f * 16777216.0 / PAL)))
+    return min(0xFFFF, int(round(f * 16777216.0 / CLK)))
 def sidnoise(np_):
     np_ = np_ & 0x1F or 1
     f = CLK_AY / (16.0 * np_)
-    return min(0xFFFF, int(round(f * 1048576.0 / PAL)))
+    return min(0xFFFF, int(round(f * 1048576.0 / CLK)))
 
-nf = [sidf(p) for p in SND['note_periods']]
-A += asm_bytes('note_lo', [x & 0xFF for x in nf])
-A += asm_bytes('note_hi', [x >> 8 for x in nf])
+# The SID frequencies depend on the machine's clock: one block of tables for
+# PAL, the same block for NTSC / PAL-N; at start-up the game copies the
+# second over the first when it runs on NTSC or PAL-N.
+def freq_block(suffix):
+    nf = [sidf(p) for p in SND['note_periods']]
+    dnf = [sidnoise(d['noise_period']) if d['noise_period'] else 0 for d in SND['drums']]
+    seq_lo, seq_hi = [], []
+    for e in SND['sfx']:
+        p, dlt, n, typ = e['period'], e['delta'], e['frames'], e['noise']
+        for k in range(n):
+            f = sidf(p & 0xFFFF) if typ == 0 else sidnoise(p & 0x1F)
+            seq_lo.append(f & 0xFF); seq_hi.append(f >> 8)
+            p = (p + dlt) & 0xFFFF
+    b = ''
+    for name, vals in (('note_lo', [x & 0xFF for x in nf]), ('note_hi', [x >> 8 for x in nf]),
+                       ('drum_lo', [x & 0xFF for x in dnf]), ('drum_hi', [x >> 8 for x in dnf]),
+                       ('sfx_lo', seq_lo), ('sfx_hi', seq_hi)):
+        b += asm_bytes(name + suffix, vals)
+    return b
+A += 'freq_tab\n' + freq_block('') + 'FREQ_LEN = * - freq_tab\n'
+CLK = NTSC
+A += 'freq_ntsc\n' + freq_block('_ntsc')
+CLK = PAL
 
 mlo, mhi, mrows, mspeed, mloop = [], [], [], [], []
 off = 0
@@ -280,20 +303,13 @@ w('music.bin', blob)
 A += asm_bytes('mus_lo', mlo) + asm_bytes('mus_hi', mhi)
 A += asm_bytes('mus_rows', mrows) + asm_bytes('mus_speed', mspeed) + asm_bytes('mus_loop', mloop)
 A += asm_bytes('drum_len', [d['frames'] for d in SND['drums']])
-dnf = [sidnoise(d['noise_period']) if d['noise_period'] else 0 for d in SND['drums']]
-A += asm_bytes('drum_lo', [x & 0xFF for x in dnf]) + asm_bytes('drum_hi', [x >> 8 for x in dnf])
 
-# sound effects: precompute one SID frequency per frame
-seq_lo, seq_hi, sfx_start, sfx_len, sfx_type = [], [], [], [], []
+# sound effects: one SID frequency per frame (sfx_lo/sfx_hi in the blocks above)
+sfx_start, sfx_len, sfx_type, pos = [], [], [], 0
 for e in SND['sfx']:
-    p, dlt, n, typ = e['period'], e['delta'], e['frames'], e['noise']
-    sfx_start.append(len(seq_lo)); sfx_len.append(n); sfx_type.append(typ)
-    for k in range(n):
-        f = sidf(p & 0xFFFF) if typ == 0 else sidnoise(p & 0x1F)
-        seq_lo.append(f & 0xFF); seq_hi.append(f >> 8)
-        p = (p + dlt) & 0xFFFF
+    sfx_start.append(pos); sfx_len.append(e['frames']); sfx_type.append(e['noise'])
+    pos += e['frames']
 A += asm_bytes('sfx_start', sfx_start) + asm_bytes('sfx_len', sfx_len) + asm_bytes('sfx_type', sfx_type)
-A += asm_bytes('sfx_lo', seq_lo) + asm_bytes('sfx_hi', seq_hi)
 
 # speech sample -> 4 bit linear values for $d418
 AYV = [0,0.0137,0.0205,0.0291,0.0423,0.0618,0.0847,0.1369,0.1691,0.2647,

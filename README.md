@@ -18,7 +18,9 @@ designed to take the game to other platforms.
 ## Play
 
 1. Download the `.d64` from [Releases](../../releases), or build it with `make` (see below).
-2. On a C64 or in VICE: `LOAD"*",8,1` and `RUN`.
+2. On a C64 or in VICE: `LOAD"*",8,1` and `RUN`. The same file runs on PAL, NTSC and
+   PAL-N (Drean) machines: it detects the system and keeps the speed and the tuning of the
+   music right on each.
 
 **Controls:** keyboard **O/Z** left, **P/X** right, **Q/SPACE** jump,
 **SPACE/RETURN** start · joystick in **port 2 or 1** (up or fire = jump) ·
@@ -36,6 +38,8 @@ designed to take the game to other platforms.
   or lands after a fall, and the baddies give a little hop. Only the picture changes; the
   game itself plays exactly as before.
 - **Blinking "PRESS SPACE OR FIRE"** instead of the yellow inverse banner of the original.
+- **PAL, NTSC and PAL-N** in one program, at the same speed and in tune on all three
+  (the credits screen shows the system found).
 
 Technical details in [`platforms/c64/README.md`](platforms/c64/README.md).
 

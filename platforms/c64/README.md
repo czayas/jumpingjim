@@ -1,6 +1,7 @@
 # Jumping Jim — Commodore 64
 
-Complete port in 6502 assembly (ACME). Runs on a real PAL C64 or in an emulator (VICE).
+Complete port in 6502 assembly (ACME). Runs on a real C64 (PAL, NTSC or PAL-N/Drean) or
+in an emulator (VICE).
 
 ## Building
 
@@ -100,6 +101,18 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
   This also fixes a stray banner: the title left its blinking row active while the high
   score table was being drawn, and sometimes a yellow bar stayed between two entries.
   Every new screen now stops the blinking row.
+- **PAL, NTSC and PAL-N** (addition): at start-up the game counts the CPU cycles of one
+  frame with CIA 1 timer A (PAL 19656, PAL-N 20280, NTSC 17095 or 16768 on old NTSC
+  machines) and the credits screen shows the result. On NTSC (60 frames per second) one
+  frame in six is not a game tick, so the game, the music and every timer run at the 50
+  ticks per second of PAL (49.9). NTSC and PAL-N machines have a faster clock (1.02 MHz
+  instead of 0.985), so they get SID frequency tables computed for it: every note is
+  within 2.4 cents of the original AY pitch on all three systems (v1.0.1 was 2/3 of a
+  semitone sharp on NTSC and PAL-N, and 19 % faster on NTSC).
+- **Faster screen updates** (no change in behaviour): the gap edges are drawn with fewer
+  instructions and, during play, the HUD redraws only its numbers and hearts. With eight
+  baddies the game now keeps 49.9 updates per second on PAL and 49.5-49.9 on NTSC (v1.0.1
+  dropped to 49.2 on PAL).
 - **Instant start** (change from the original): the original freezes the game for 130
   frames on "GET READY!". Here play starts at once: the text stays for the same time while
   Jim blinks (invulnerable) and can already move.

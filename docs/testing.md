@@ -97,6 +97,32 @@ Compared with v1.0.1, logic clock, all three scenarios:
 - title speed: 467 loop iterations in the first 590 frames (v1.0.1: 470);
 - loading from the .d64 with true drive emulation and saving `JJ.HISCORES`: works.
 
+### Checks of PAL / NTSC / PAL-N (branch v1.1.0-dev)
+
+- detection (`tv_sys` read back after start-up): PAL 0, NTSC 1, old NTSC 1, PAL-N 2;
+- game ticks per second (counted from `fcount`): PAL 50.12, NTSC 49.86, old NTSC 50.83,
+  PAL-N 50.47;
+- tuning (SID frequency in use against the AY frequency of each note): within 1.4 cents
+  on PAL and NTSC, 2.4 cents on PAL-N;
+- game logic and pictures with the logic clock on NTSC, old NTSC and PAL-N: identical to
+  PAL, except the credits line that names the system;
+- game updates per second reached with 2 to 8 baddies (`make frametime`):
+
+| Level | Enemies | PAL CPU | PAL updates/s | NTSC CPU | NTSC updates/s |
+|---|---|---|---|---|---|
+| 1 | 2 | 27 % | 50.1 | 31 % | 49.9 |
+| 2 | 3 | 32 % | 50.1 | 36 % | 49.9 |
+| 3 | 4 | 44 % | 50.1 | 49 % | 49.9 |
+| 4 | 5 | 54 % | 50.1 | 60 % | 49.7 |
+| 5 | 6 | 64 % | 49.9 | 70 % | 49.7 |
+| 6 | 7 | 72 % | 49.9 | 84 % | 49.7 |
+| 7 | 8 | 79 % | 49.9 | 90 % | 49.9 |
+| 8 | 8 | 76 % | 49.9 | 83 % | 49.5 |
+| 9 | 8 | 81 % | 49.9 | 91 % | 49.7 |
+
+(Ideal: 50.1 on PAL, 49.9 on NTSC. "CPU" is the average share of a frame the game loop
+needs.)
+
 ## Baseline measurements, v1.0.1
 
 (The shake adds about 1 to 2 % of a frame to the game loop.)

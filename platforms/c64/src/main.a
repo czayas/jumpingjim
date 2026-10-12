@@ -135,6 +135,7 @@ start   jsr hs_boot         ; load JJ.HISCORES from disk (KERNAL still active)
         lda $dd0d
         lda #0
         sta $d01a
+        jsr detect_tv       ; PAL, NTSC or PAL-N (Drean)
         lda #<nmi
         sta $fffa
         lda #>nmi
@@ -272,7 +273,13 @@ irq_top
         lda #0
         sta evnext
         jsr do_events
-        inc fcount
+        lda tv_skip         ; NTSC: every 6th frame is not a game tick, so the
+        beq +               ; game, the music and all the timers run at the
+        dec tv_cnt          ; 50 ticks per second of PAL
+        bne +
+        sta tv_cnt
+        jmp irq_exit
++       inc fcount
         ; rainbow stripes in the side "border" columns while falling
         lda flash
         beq +
@@ -1226,49 +1233,46 @@ floor_base
         sta fbase+1
         rts
 
-; pixel helpers on the 3 floor lines. A = x
-pix_addr
-        tay
+; pixel helpers on the 3 floor lines (fbase = row). A = x. X is not kept.
+; (faster than v1.0.1: the cell offset goes straight into Y for (fbase),y)
+setpix3 tax
         and #$f8
-        clc
-        adc fbase
-        sta fp
-        lda fbase+1
-        adc #0
-        sta fp+1
-        tya
-        and #7
         tay
-        lda bitmask,y
-        rts
-setpix3 jsr pix_addr
+        txa
+        and #7
+        tax
+        lda bitmask,x
         sta t2
-        ldy #0
-        ora (fp),y
-        sta (fp),y
+        ora (fbase),y
+        sta (fbase),y
         iny
-        lda (fp),y
+        lda (fbase),y
         ora t2
-        sta (fp),y
+        sta (fbase),y
         iny
-        lda (fp),y
+        lda (fbase),y
         ora t2
-        sta (fp),y
+        sta (fbase),y
         rts
-clrpix3 jsr pix_addr
+clrpix3 tax
+        and #$f8
+        tay
+        txa
+        and #7
+        tax
+        lda bitmask,x
         eor #$ff
         sta t2
-        ldy #0
-        and (fp),y
-        sta (fp),y
+        and (fbase),y
+        sta (fbase),y
         iny
-        lda (fp),y
+        lda (fbase),y
         and t2
-        sta (fp),y
+        sta (fbase),y
         iny
-        lda (fp),y
+        lda (fbase),y
         and t2
-        sta (fp),y
+        sta (fbase),y
         rts
 
 ; draw floor X completely (Z80 $84f0)
@@ -1473,6 +1477,36 @@ draw_hud
         lda levelbcd
         jsr putbcd
         +PRINT s_2sp
+        jsr hud_hearts
+        +PRINT s_2sp
+        +ATTR $70, 0, 0, 12
+        +ATTR $30, 0, 12, 13
+        +ATTR $a0, 0, 25, 7
+        rts
+
+; during play only the numbers and the hearts change: redraw just those
+; (the full HUD took 2.5 raster lines per character and caused late frames)
+hud_values
+        lda #0
+        sta hudflag
+        lda #0
+        ldx #6
+        jsr setcur
+        lda score+2
+        jsr putbcd
+        lda score+1
+        jsr putbcd
+        lda score
+        jsr putbcd
+        lda #0
+        ldx #21
+        jsr setcur
+        lda levelbcd
+        jsr putbcd
+        lda #0
+        ldx #25
+        jsr setcur
+hud_hearts
         lda #5
         sta t5
         lda lives
@@ -1486,10 +1520,6 @@ draw_hud
 ++      jsr putch
         dec t5
         bne -
-        +PRINT s_2sp
-        +ATTR $70, 0, 0, 12
-        +ATTR $30, 0, 12, 13
-        +ATTR $a0, 0, 25, 7
         rts
 
 ; ===========================================================================
@@ -1728,7 +1758,7 @@ play    lda #0
         jsr build_sprites
         lda hudflag
         beq +
-        jsr draw_hud
+        jsr hud_values
 +       lda readyt          ; remove "GET READY!" after its time
         beq +
         dec readyt
@@ -2485,6 +2515,86 @@ mo_enext
 
 ; ===========================================================================
 ;  Title screen (Z80 $8d1c)
+; ===========================================================================
+;  Video system (addition): count the CPU cycles of one frame with CIA 1
+;  timer A. PAL 19656 (63 x 312), PAL-N/Drean 20280 (65 x 312), NTSC 17095
+;  (65 x 263; old NTSC 16768). The timer counts down from $ffff, so the high
+;  byte left is $b3 on PAL, $b0 on PAL-N and $bd/$be on NTSC.
+;  tv_sys: 0 PAL, 1 NTSC, 2 PAL-N. NTSC and PAL-N use the SID frequency
+;  tables made for their clock (1.02 MHz instead of 0.985 MHz).
+; ===========================================================================
+detect_tv
+        lda #0
+        sta $dc0e           ; timer A stopped
+        lda #$ff
+        sta $dc04
+        sta $dc05
+        jsr dt_line         ; wait for raster line $30
+        lda #$11            ; load $ffff and start (continuous, CPU clock)
+        sta $dc0e
+-       lda $d012           ; leave line $30 ...
+        cmp #$30
+        beq -
+        jsr dt_line         ; ... and wait for it in the next frame
+        lda #0
+        sta $dc0e
+        lda $dc05
+        ldx #1              ; NTSC
+        cmp #$bb
+        bcs dt_set
+        ldx #0              ; PAL
+        cmp #$b2
+        bcs dt_set
+        ldx #2              ; PAL-N
+dt_set  stx tv_sys
+        lda #$25            ; timer A back to the KERNAL's setting
+        sta $dc04
+        lda #$40
+        sta $dc05
+        lda #$11
+        sta $dc0e
+        lda #0
+        sta tv_skip
+        cpx #1
+        bne +
+        lda #6
+        sta tv_skip
+        sta tv_cnt
++       txa                 ; NTSC or PAL-N: their SID frequency tables
+        beq dt_end
+        lda #<freq_ntsc
+        sta src
+        lda #>freq_ntsc
+        sta src+1
+        lda #<freq_tab
+        sta dst
+        lda #>freq_tab
+        sta dst+1
+        ldy #0
+        ldx #>FREQ_LEN      ; whole pages
+        beq dt_rest
+-       lda (src),y
+        sta (dst),y
+        iny
+        bne -
+        inc src+1
+        inc dst+1
+        dex
+        bne -
+dt_rest cpy #<FREQ_LEN      ; the rest
+        beq dt_end
+        lda (src),y
+        sta (dst),y
+        iny
+        bne dt_rest
+dt_end  rts
+dt_line lda $d012
+        cmp #$30
+        bne dt_line
+        lda $d011
+        bmi dt_line
+        rts
+
 ; ===========================================================================
 ;  unpack: LZ data (tools/lzpack.py) from src to dst, straight into place.
 ;  Tokens: 0 end; 1-127 literal bytes; $80 n: leave n bytes as they are;
@@ -4079,6 +4189,18 @@ show_credits
         lda #$30
         ldx #18
         jsr fill_row_attr
+        +PRINTAT 20, 9, s_tv
+        lda tv_sys
+        asl
+        tax
+        lda tv_names,x
+        sta sptr
+        lda tv_names+1,x
+        sta sptr+1
+        jsr print
+        lda #$c0
+        ldx #20
+        jsr fill_row_attr
         +PRINTAT 22, 6, s_press
         lda #$70
         sta flasha
@@ -4128,6 +4250,11 @@ s_cr3   !raw "PORTED BY",0
 s_cr4   !raw "RETRO INFORMATICA PARAGUAY",0
 s_cr5   !raw "VISIT",0
 s_cr6   !raw "YOUTUBE.COM/@RETROINFOPY",0
+s_tv    !raw "RUNNING ON ",0
+tv_names !word s_pal, s_ntsc, s_paln
+s_pal   !raw "PAL ",0
+s_ntsc  !raw "NTSC",0
+s_paln  !raw "PAL-N",0
 
 ; high score table screen.  A = timeout/8 frames.  C=1 if fire was pressed
 show_table
@@ -4294,6 +4421,9 @@ hold    !byte 0
 previn  !byte 0
 ttm     !word 0
 readyt  !byte 0
+tv_sys  !byte 0         ; 0 PAL, 1 NTSC, 2 PAL-N (detect_tv)
+tv_skip !byte 0         ; NTSC: 6 (one frame in six without a game tick)
+tv_cnt  !byte 0
 fx_on   !byte 1         ; extra effects on (1) / off (0) - F1 on the title
 fx_key  !byte 0         ; F1 held on the previous frame
 shk_t   !byte 0         ; frames of screen shake left

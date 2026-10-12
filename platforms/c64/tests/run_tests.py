@@ -8,9 +8,19 @@ Automated test scenarios for the Commodore 64 port (headless VICE).
           <name>.png        contact sheet of screenshots
           shots/<name>_<frame>.png
   run_tests.py compare DIR_A DIR_B [--ignore-screen]
+        (frame 0 of every scenario is the first frame of the title screen)
         compare two recordings frame by frame and name the first difference
   run_tests.py check   DIR
         record into a temporary directory and compare with DIR (regression test)
+
+  --clock frame  (default) one step = one video frame: the real behaviour,
+                 timing included. Use it to check that nothing changed at all.
+  --clock logic  one step = one game update, and the game's frame counter is
+                 set to the update number. Levels 1-2 move the floors on even
+                 frames, so in the real game a change of speed anywhere (a
+                 slower screen set-up, a late frame) changes what happens
+                 next; the logic clock removes that, so two versions with
+                 different timing can be compared for the game logic alone.
 
 The controls are scripted, or played by a small "autopilot" that only looks at
 the game's own variables, so every run of a given binary is identical.
@@ -62,8 +72,6 @@ class Game:
         self.e_state = zp[lab["e_state"]:lab["e_state"] + 8]
         self.e_floor = zp[lab["e_floor"]:lab["e_floor"] + 8]
         self.e_x = zp[lab["e_x"]:lab["e_x"] + 8]
-        if self.floor_y is None and self.v.frame > 5:     # program is loaded
-            self.floor_y = list(self.v.peek(lab["floor_y"], 7))
 
     def trace(self):
         out = b""
@@ -119,10 +127,10 @@ def autopilot(g, careful=True):
 
 # --------------------------------------------------------------- scenarios
 def scenario_attract(v, g, rec):
-    """No input: splash, title, high score table, credits, title again."""
-    for frame in range(1700):
-        v.next_frame()
-        rec(frame, shot=frame in (40, 150, 215, 330, 600, 900, 1250, 1650))
+    """No input: title, high score table, credits, title again."""
+    for frame in range(1600):
+        v.step()
+        rec(frame, shot=frame in (40, 130, 300, 500, 700, 1050, 1450, 1590))
 
 
 def scenario_play(v, g, rec):
@@ -133,8 +141,8 @@ def scenario_play(v, g, rec):
 
     def on_title(vv):
         if over[0] is not None and back[0] is None:
-            back[0] = vv.frame
-    v.on(g.lab["gameover"], lambda vv: over.__setitem__(0, vv.frame))
+            back[0] = vv.now()
+    v.on(g.lab["gameover"], lambda vv: over.__setitem__(0, vv.now()))
     v.on(g.lab["title"], on_title)
     for frame in range(12000):
         g.refresh()
@@ -142,7 +150,7 @@ def scenario_play(v, g, rec):
         if frame < 330:
             inp = 0
         elif frame < 336:
-            inp = FIRE                        # start the game
+            inp = FIRE                        # start the game (frame 0 = title)
         elif over[0] is None:
             inp = autopilot(g, careful=frame < 3300) if frame > 340 else 0
             if frame >= 6000 and frame % 250 == 0 and g.pstate < 3:
@@ -163,15 +171,20 @@ def scenario_play(v, g, rec):
             if t > 1020:
                 break
         v.set_input(inp)
-        v.next_frame()
+        v.step()
         rec(frame, shot=shot)
 
 
 def scenario_levels(v, g, rec):
     """Visit the first 9 levels (the 8 colour schemes and the first repeat):
-    the autopilot plays, and after 420 frames 'level complete' is forced."""
+    the autopilot plays with endless lives, and after 420 steps 'level
+    complete' is forced."""
     starts = []
-    v.on(g.lab["setup_level"], lambda vv: starts.append(vv.frame))
+
+    def level_start(vv):
+        starts.append(vv.now())
+        vv.poke(g.lab["lives"], 3)            # cheat: never run out of lives
+    v.on(g.lab["setup_level"], level_start)
     for frame in range(9000):
         g.refresh()
         if len(starts) == 10:
@@ -183,10 +196,10 @@ def scenario_levels(v, g, rec):
             inp = FIRE
         else:
             inp = autopilot(g) if t > 10 else 0
-            if t == 420 and g.zp[g.lab["gstat"]] == 0 and g.pstate < 3:
+            if t >= 420 and g.zp[g.lab["gstat"]] == 0 and g.pstate < 3:
                 v.poke(g.lab["gstat"], 1)     # cheat: next level
         v.set_input(inp)
-        v.next_frame()
+        v.step()
         rec(frame, shot=t in (60, 250))
 
 
@@ -194,8 +207,30 @@ SCENARIOS = [("attract", scenario_attract), ("play", scenario_play),
              ("levels", scenario_levels)]
 
 
+def drawn(v, lab):
+    """Everything the program has prepared to be shown: the 256x192 bitmap,
+    its colours and the sprite list of the next frame (the side columns, the
+    blinking row and the screen offset are left out: the interrupt changes
+    them by time, not by the game logic)."""
+    bitmap = v.peek(0xE000, 24 * 320)
+    colours = bytearray(v.peek(0xC000, 24 * 40))
+    flashrow = v.peek(lab["flashrow"])[0]
+    out = bytearray()
+    for r in range(24):
+        out += bitmap[r * 320 + 32:r * 320 + 288]
+        if r != flashrow:
+            out += colours[r * 40 + 4:r * 40 + 36]
+    n = v.peek(lab["dnB"])[0]
+    sprites = v.peek(lab["bline"], 90)                 # bline .. bcol, 10 each
+    for i in range(min(n, 10)):
+        out += bytes(sprites[k * 10 + i] for k in (3, 4, 5, 6, 7, 8))   # x y msb pri ptr col
+    out += bytes([n])
+    return bytes(out)
+
+
 # ----------------------------------------------------------------- driver
-def record(outdir, prg, labels_file, video, only=None, emulator="x64sc"):
+def record(outdir, prg, labels_file, video, only=None, emulator="x64sc", clock="frame",
+           fx_off=False):
     lab = load_labels(labels_file)
     os.makedirs(os.path.join(outdir, "shots"), exist_ok=True)
     width = sum(n for _, n in TRACE)
@@ -206,11 +241,33 @@ def record(outdir, prg, labels_file, video, only=None, emulator="x64sc"):
         with Vice(prg, emulator=emulator, video=video) as v:
             g = Game(v, lab)
             v.start(lab["irq_top"], lab["ri_end"], lab["input"])
+            # the start-up (RIP splash) is not compared: frame 0 of every
+            # scenario is the first frame of the title screen, so versions
+            # whose start-up takes a different time can still be compared
+            v.run_to(lab["title"])
+            g.floor_y = list(v.peek(lab["floor_y"], 7))
+            if fx_off and "fx_on" in lab:
+                v.poke(lab["fx_on"], 0)           # extra effects off (F1)
+            if clock == "frame":
+                v.step = v.next_frame
+                v.now = lambda: v.frame - 1     # = index of the current step
+            else:
+                # one step = one game update, with the frame counter set to the
+                # update number (see the module documentation)
+                v.updates = 0
+                v.step = lambda: v.next_update(lab["fcount"])
+                v.now = lambda: v.updates - 1
 
             def rec(frame, shot=False):
                 g.refresh()
-                img = v.screenshot()
-                digest = hashlib.sha1(img.tobytes()).digest()[:6]
+                img = v.screenshot() if (shot or clock == "frame") else None
+                if clock == "frame":
+                    # the picture VICE has just finished drawing
+                    digest = hashlib.sha1(img.tobytes()).digest()[:6]
+                else:
+                    # mid-frame, VICE's picture depends on timing: use what the
+                    # program has in memory to be drawn instead
+                    digest = hashlib.sha1(drawn(v, lab)).digest()[:6]
                 rows.append(g.trace() + digest)
                 if shot:
                     img.save(os.path.join(outdir, "shots",
@@ -225,12 +282,17 @@ def record(outdir, prg, labels_file, video, only=None, emulator="x64sc"):
                 os.path.join(outdir, name + ".png"))
         print("%-8s %5d frames, %2d screenshots" % (name, len(rows), len(shots)))
     with open(os.path.join(outdir, "info.json"), "w") as f:
-        json.dump({"video": video, "trace": TRACE, "row": width + 6}, f)
+        json.dump({"video": video, "clock": clock, "trace": TRACE, "row": width + 6}, f)
+
+
+# changed by the interrupt once per video frame, not by the game logic
+IRQ_VARS = {"flash"}
 
 
 def compare(dir_a, dir_b, ignore_screen=False):
     info = json.load(open(os.path.join(dir_a, "info.json")))
     row, ok = info["row"], True
+    logic = info.get("clock") == "logic"
     for name, _ in SCENARIOS:
         fa = os.path.join(dir_a, name + ".trace.gz")
         fb = os.path.join(dir_b, name + ".trace.gz")
@@ -239,12 +301,16 @@ def compare(dir_a, dir_b, ignore_screen=False):
         a, b = gzip.open(fa).read(), gzip.open(fb).read()
         na, nb = len(a) // row, len(b) // row
         result = None
+        pic = []                              # frames: same state, other picture
         for frame in range(min(na, nb)):
             ra, rb = a[frame * row:(frame + 1) * row], b[frame * row:(frame + 1) * row]
             if ra == rb:
                 continue
             pos = 0
             for var, length in info["trace"]:
+                if logic and var in IRQ_VARS:
+                    pos += length
+                    continue
                 if ra[pos:pos + length] != rb[pos:pos + length]:
                     result = "frame %d: %s = %s vs %s" % (
                         frame, var, ra[pos:pos + length].hex(),
@@ -253,9 +319,16 @@ def compare(dir_a, dir_b, ignore_screen=False):
                 pos += length
             if result:
                 break
-            if not ignore_screen:
-                result = "frame %d: same game state, different picture" % frame
-                break
+            if ra[-6:] != rb[-6:]:
+                pic.append(frame)
+        if result is None and pic and not ignore_screen:
+            ranges, start = [], pic[0]
+            for p0, p1 in zip(pic, pic[1:] + [None]):
+                if p1 != p0 + 1:
+                    ranges.append("%d-%d" % (start, p0) if p0 > start else str(start))
+                    start = p1
+            result = "same game state; the picture differs in %d frames: %s%s" % (
+                len(pic), ", ".join(ranges[:12]), " ..." if len(ranges) > 12 else "")
         if result is None and na != nb:
             result = "different length: %d vs %d frames" % (na, nb)
         print("%-8s %s" % (name, "identical (%d frames)" % na
@@ -273,15 +346,19 @@ def main():
     ap.add_argument("--video", default="pal")
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--ignore-screen", action="store_true")
+    ap.add_argument("--clock", choices=["frame", "logic"], default="frame")
+    ap.add_argument("--fx-off", action="store_true",
+                    help="switch the extra effects off (as F1 on the title)")
     a = ap.parse_args()
     if a.mode == "record":
-        record(a.dirs[0], a.prg, a.labels, a.video, a.only)
+        record(a.dirs[0], a.prg, a.labels, a.video, a.only, clock=a.clock, fx_off=a.fx_off)
     elif a.mode == "compare":
         sys.exit(0 if compare(a.dirs[0], a.dirs[1], a.ignore_screen) else 1)
     else:
         with tempfile.TemporaryDirectory() as tmp:
-            video = json.load(open(os.path.join(a.dirs[0], "info.json")))["video"]
-            record(tmp, a.prg, a.labels, video, a.only)
+            info = json.load(open(os.path.join(a.dirs[0], "info.json")))
+            record(tmp, a.prg, a.labels, info["video"], a.only,
+                   clock=info.get("clock", "frame"))
             sys.exit(0 if compare(a.dirs[0], tmp, a.ignore_screen) else 1)
 
 

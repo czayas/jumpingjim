@@ -15,7 +15,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from run_tests import Vice, Game, load_labels, autopilot, FIRE  # noqa: E402
+from run_tests import Vice, Game, load_labels, scenario_levels  # noqa: E402
 
 prg = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "build", "jumpingjim.prg")
 lbl = sys.argv[2] if len(sys.argv) > 2 else os.path.join(HERE, "..", "build", "jumpingjim.lbl")
@@ -25,24 +25,18 @@ for video, total in (("pal", 312), ("ntsc", 263)):
     starts, lines = [], []
     with Vice(prg, video=video) as v:
         g = Game(v, lab)
+        v.start(lab["irq_top"], lab["ri_end"], lab["input"])
+        v.run_to(lab["title"])
+        g.floor_y = list(v.peek(lab["floor_y"], 7))
+        v.step = v.next_frame
+        v.now = lambda: v.frame - 1
 
         def at_waitframe(vv):
             d011, d012 = vv.peek(0xD011, 2, bank=3)     # 3 = I/O
             lines.append((vv.frame, len(starts), ((d011 & 0x80) << 1) | d012))
         v.on(lab["setup_level"], lambda vv: starts.append(vv.frame))
         v.on(lab["waitframe"], at_waitframe)
-        v.start(lab["irq_top"], lab["ri_end"], lab["input"])
-        for frame in range(9000):
-            g.refresh()
-            if len(starts) == 10:
-                break
-            t = frame - starts[-1] if starts else -1
-            inp = 0 if frame < 330 else FIRE if frame < 336 else (
-                autopilot(g) if t > 10 else 0)
-            if frame >= 336 and t == 420 and g.zp[lab["gstat"]] == 0 and g.pstate < 3:
-                v.poke(lab["gstat"], 1)
-            v.set_input(inp)
-            v.next_frame()
+        scenario_levels(v, g, lambda frame, shot=False: None)
     print("%s (%d raster lines per frame)" % (video.upper(), total))
     print("  level  enemies  average  worst   late frames")
     used = collections.defaultdict(list)

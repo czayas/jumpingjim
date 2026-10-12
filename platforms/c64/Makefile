@@ -31,16 +31,19 @@ run: $(PRG)
 	x64sc -autostart $(PRG)
 
 # automated tests in headless VICE (see ../../docs/testing.md)
-#   make check      play the scripted scenarios and compare with tests/ref-pal
-#   make reference  record tests/ref-pal again (after an intended change)
+#   make check      play the scenarios and compare with tests/ref-pal (real
+#                   timing) and tests/ref-pal-logic (game logic only)
+#   make reference  record both references again (after an intended change)
 #   make frametime  CPU time used per frame, PAL and NTSC
 check: $(PRG)
 	python3 tests/run_tests.py check tests/ref-pal
+	python3 tests/run_tests.py check tests/ref-pal-logic
 
 reference: $(PRG)
-	rm -rf tests/ref-pal
+	rm -rf tests/ref-pal tests/ref-pal-logic
 	python3 tests/run_tests.py record tests/ref-pal
-	rm -rf tests/ref-pal/shots
+	python3 tests/run_tests.py record tests/ref-pal-logic --clock logic
+	rm -rf tests/ref-pal/shots tests/ref-pal-logic/shots
 
 frametime: $(PRG)
 	python3 tests/frame_time.py
@@ -57,7 +60,7 @@ dist: $(PRG) $(D64)
 	cp $(PRG) $(DIST)/jumpingjim-c64-$(VERSION).prg
 	cp $(D64) $(PRG) $(DIST)/c64/
 	cp ../../LICENSE ../../NOTICE.md $(DIST)/c64/
-	printf 'Jumping Jim - Commodore 64 %s\n\nLOAD"*",8,1 and RUN (or open the .d64 in VICE).\nKeys: O/Z left, P/X right, Q/SPACE jump. Joystick in port 2 or 1.\n\nOriginal game by roman126 - https://roman126.itch.io/jumping-jim-zx-spectrum-next\nC64 port by Carlos Zayas (AI-assisted) - https://github.com/czayas/jumpingjim\n' $(VERSION) > $(DIST)/c64/README.txt
+	printf 'Jumping Jim - Commodore 64 %s\n\nLOAD"*",8,1 and RUN (or open the .d64 in VICE).\nKeys: O/Z left, P/X right, Q/SPACE jump. Joystick in port 2 or 1.\nF1 on the title screen: extra effects (screen shake) on/off.\n\nOriginal game by roman126 - https://roman126.itch.io/jumping-jim-zx-spectrum-next\nC64 port by Carlos Zayas (AI-assisted) - https://github.com/czayas/jumpingjim\n' $(VERSION) > $(DIST)/c64/README.txt
 	cd $(DIST)/c64 && rm -f ../jumpingjim-c64-$(VERSION).zip && zip -q -r ../jumpingjim-c64-$(VERSION).zip .
 	rm -rf $(DIST)/c64
 

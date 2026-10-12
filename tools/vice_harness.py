@@ -90,6 +90,7 @@ class Vice:
         self.input_var = None
         self.input_value = 0
         self.hooks = {}
+        self.updates = 0
         self.ram_bank = 0
         self._palette = None
         self.logfile = tempfile.NamedTemporaryFile(
@@ -227,13 +228,60 @@ class Vice:
 
     def on(self, addr, callback):
         """Call callback(vice) every time the program reaches addr (the machine
-        is stopped meanwhile, so the callback may read and write memory)."""
-        self.checkpoint(addr)
-        self.hooks[addr] = callback
+        is stopped meanwhile, so the callback may read and write memory).
+        Several callbacks may share an address. Returns a handle for off()."""
+        if addr not in self.hooks:
+            self.hooks[addr] = [self.checkpoint(addr), []]
+        self.hooks[addr][1].append(callback)
+        return (addr, callback)
+
+    def off(self, handle):
+        """Remove a callback set with on()."""
+        addr, callback = handle
+        self.hooks[addr][1].remove(callback)
+        if not self.hooks[addr][1]:
+            self.delete_checkpoint(self.hooks.pop(addr)[0])
+
+    def _hook(self, pc):
+        for callback in list(self.hooks[pc][1]):
+            callback(self)
+
+    def run_to(self, addr, max_frames=5000):
+        """Advance whole frames until the program reaches addr, then restart
+        the frame count: frame 0 is the frame in which addr was reached.
+        Useful to compare versions whose start-up takes a different time."""
+        hit = []
+        handle = self.on(addr, lambda vv: hit.append(vv.frame))
+        while not hit:
+            if self.frame > max_frames:
+                raise ViceError("address %04x never reached" % addr)
+            self.next_frame()
+        self.off(handle)
+        self.frame = 0
+        return hit[0]
 
     def set_input(self, value):
         """Scripted controls, held until changed (meaning is program specific)."""
         self.input_value = value
+
+    def next_update(self, clock_var=None):
+        """Advance to the program's next read of the controls (input_addr),
+        i.e. one game update, whatever the number of video frames it took.
+        If clock_var is given, that byte (the program's frame counter) is set
+        to the number of updates so far: the game then runs on a 'logical'
+        clock and two versions with different timing can be compared."""
+        while True:
+            pc = self.run_until_stop()
+            if pc == self.input_addr:
+                self.poke(self.input_var, self.input_value)
+                if clock_var is not None:
+                    self.poke(clock_var, self.updates & 255)
+                self.updates += 1
+                return self.updates
+            if pc in self.hooks:
+                self._hook(pc)
+            elif pc == self.frame_addr:
+                self.frame += 1
 
     def next_frame(self, n=1):
         """Advance n video frames (the machine stays stopped on return)."""
@@ -243,7 +291,7 @@ class Vice:
                 if pc == self.input_addr:
                     self.poke(self.input_var, self.input_value)
                 elif pc in self.hooks:
-                    self.hooks[pc](self)
+                    self._hook(pc)
                 elif pc == self.frame_addr:
                     break
             self.frame += 1

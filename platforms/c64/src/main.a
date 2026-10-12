@@ -269,6 +269,13 @@ irq_top
         jsr copybuf
         lda #0
         sta pending
++       lda shk_nxt         ; screen shake: YSCROLL for this frame (7, 6 or 5)
+        cmp shk_cur
+        beq +
+        sta shk_cur
+        eor #7
+        ora #$30            ; bitmap, display on, 24 rows
+        sta $d011
 +       lda dmask
         sta $d015
         lda #0
@@ -353,7 +360,9 @@ apply_event
         sta $d027,x
         rts
 
-copybuf ldx dnB
+copybuf lda shkB
+        sta shk_nxt
+        ldx dnB
         stx dn
         lda dmaskB
         sta dmask
@@ -631,6 +640,8 @@ bs_skip ldx t4
         jmp bs_loop
 bs_done lda t3
         sta dnB
+        lda shk_off
+        sta shkB
         lda #1
         sta pending
         rts
@@ -1001,10 +1012,23 @@ set_border
         inx
         cpx #25
         bne -
-        rts
+        lda t1              ; row 24 is only seen while the screen shakes:
+        ldx #24             ; give it the colour of the border
+        jmp fill_row_attr
 
 ; cls: A = colour byte for the 32x24 area
-cls     sta t5
+; (also stops the blinking text row: a new screen must not inherit it -
+;  the title used to leave its row 18 blinking over the high score table)
+cls     ldx #$ff
+        stx flashrow
+        ldx #0              ; ... and any screen shake or baddie hop
+        stx shk_t
+        stx hop_t
+        stx shk_off
+        stx hop_off
+        stx shkB
+        stx shk_nxt
+        sta t5
         lda #<BITMAP
         sta fp
         lda #>BITMAP
@@ -1940,7 +1964,7 @@ hc_loop lda floor_y,x
         sta newy
         lda #0
         sta pvy
-        rts
+        jmp fx_bump         ; (addition) light shake, the baddies hop
 hc_next inx
         cpx #7
         bne hc_loop
@@ -2019,6 +2043,7 @@ land_nf lda pfall
         sta ptimer
         lda #2
         sta pstate
+        jsr fx_fall         ; (addition) strong shake, the baddies hop
         lda #4
         jmp start_sfx
 +       rts
@@ -2338,6 +2363,7 @@ cl_ret  rts
 ;  Objects for the multiplexer (Z80 $8417)
 ; ===========================================================================
 make_objects
+        jsr fx_frame
         lda #0
         sta obn
         lda pinv
@@ -2386,6 +2412,8 @@ mo_pf   asl
         lda py
         clc
         adc #38
+        sec
+        sbc shk_off
         tax
         lda px
         jsr add_obj
@@ -2435,7 +2463,14 @@ mo_normal
         sbc e_yoff,x
         clc
         adc #43
-        tax
+        sec
+        sbc shk_off
+        ldy e_state,x       ; the hop is only drawn: e_y, e_yoff and the
+        cpy #3              ; collisions stay as in the original
+        bcs +
+        sec
+        sbc hop_off
++       tax
         ldy t2
         stx t3
         ldx t5
@@ -2452,6 +2487,116 @@ mo_enext
 
 ; ===========================================================================
 ;  Title screen (Z80 $8d1c)
+; ===========================================================================
+;  Extra effects (additions, not in the original; F1 on the title turns
+;  them off): the screen shakes when Jim bumps his head or lands after a
+;  fall, and the baddies give a little hop. Only the drawing changes: the
+;  game variables and the collisions are exactly as in the original.
+; ===========================================================================
+fx_bump lda fx_on           ; head bump: light shake, low hop
+        beq +
+        lda #6
+        sta shk_t
+        lda #0
+        sta shk_big
+        sta hop_big
+        lda #9
+        sta hop_t
++       rts
+
+fx_fall lda fx_on           ; landing after a fall: strong shake, longer
+        beq +               ; the more floors Jim has fallen (pfall)
+        lda pfall
+        cmp #4
+        bcc ++
+        lda #4
+++      asl
+        asl
+        adc #8              ; 8 + 4 * min(pfall, 4) frames
+        sta shk_t
+        lda #1
+        sta shk_big
+        sta hop_big
+        lda #9
+        sta hop_t
++       rts
+
+; once per game frame: offsets of the screen (shk_off) and of the baddies
+; (hop_off) for the sprites being built now
+fx_frame
+        lda #0
+        sta shk_off
+        lda shk_t
+        beq +
+        dec shk_t
+        and #2              ; up for two frames, back for two
+        beq +
+        lda #1
+        ldx shk_big
+        beq ++
+        ldx shk_t
+        cpx #8              ; strong shake: 2 pixels, the last frames 1
+        bcc ++
+        lda #2
+++      sta shk_off
++       lda #0
+        ldy hop_t
+        beq +
+        dey
+        sty hop_t
+        lda hop_big
+        beq ++
+        lda hop_tab,y
+        jmp +
+++      lda hop_tabs,y
++       sta hop_off
+        rts
+
+hop_tab  !byte 0,1,2,3,4,4,3,2,1      ; read backwards: up 4 pixels and down
+hop_tabs !byte 0,1,1,2,2,2,2,1,1      ; head bump: 2 pixels
+
+; F1 on the title switches the effects on and off
+fx_toggle
+        lda #$ff
+        sta $dc00
+        lda $dc01           ; fire of a joystick in port 1 shares this line
+        and #$10
+        beq fxt_up
+        lda #$fe            ; keyboard column 0, row 4 = F1
+        sta $dc00
+        lda $dc01
+        ldx #$ff
+        stx $dc00
+        and #$10
+        bne fxt_up
+        lda fx_key
+        bne fxt_end         ; still held down
+        lda #1
+        sta fx_key
+        lda fx_on
+        eor #1
+        sta fx_on
+        jmp fx_show
+fxt_up  lda #0
+        sta fx_key
+fxt_end rts
+
+fx_show +PRINTAT 20, 8, s_fx
+        lda fx_on
+        beq +
+        +PRINT s_on
+        jmp ++
++       +PRINT s_off
+++      lda #$f0
+        ldx #20
+        jsr fill_row_attr
+        +ATTR $30, 20, 8, 2
+        rts
+
+s_fx    !raw "F1  EFFECTS ",0
+s_on    !raw " ON",0
+s_off   !raw "OFF",0
+
 ; ===========================================================================
 title   lda #0
         sta obn
@@ -2531,16 +2676,18 @@ title   lda #0
         +PRINTAT 18, 6, s_press
         lda #$70
         sta flasha
-        lda #$07
-        sta flashb
+        lda #$00            ; blink: yellow text <-> invisible (was a yellow
+        sta flashb          ; inverse banner, the Spectrum FLASH attribute)
         lda #$70
         ldx #18
         jsr fill_row_attr
+        jsr fx_show
         lda #18
         sta flashrow
         jsr title_music
 ti_loop jsr waitframe
         jsr read_input
+        jsr fx_toggle
         inc rndlo
         bne +
         inc rndhi
@@ -2872,8 +3019,8 @@ go_loop jsr waitframe
         +PRINTAT 23, 6, s_press
         lda #$70
         sta flasha
-        lda #$07
-        sta flashb
+        lda #$00            ; blink: yellow text <-> invisible (was a yellow
+        sta flashb          ; inverse banner, the Spectrum FLASH attribute)
         lda #$70
         ldx #23
         jsr fill_row_attr
@@ -3821,8 +3968,8 @@ show_credits
         +PRINTAT 22, 6, s_press
         lda #$70
         sta flasha
-        lda #$07
-        sta flashb
+        lda #$00            ; blink: yellow text <-> invisible (was a yellow
+        sta flashb          ; inverse banner, the Spectrum FLASH attribute)
         ldx #22
         jsr fill_row_attr
         lda #22
@@ -3959,8 +4106,8 @@ st_row  lda t5
 +       +PRINTAT 23, 6, s_press
         lda #$70
         sta flasha
-        lda #$07
-        sta flashb
+        lda #$00            ; blink: yellow text <-> invisible (was a yellow
+        sta flashb          ; inverse banner, the Spectrum FLASH attribute)
         ldx #23
         jsr fill_row_attr
         lda #23
@@ -4033,6 +4180,17 @@ hold    !byte 0
 previn  !byte 0
 ttm     !word 0
 readyt  !byte 0
+fx_on   !byte 1         ; extra effects on (1) / off (0) - F1 on the title
+fx_key  !byte 0         ; F1 held on the previous frame
+shk_t   !byte 0         ; frames of screen shake left
+shk_big !byte 0         ; 1 = strong shake (fall), 0 = light (head bump)
+shk_off !byte 0         ; screen offset (0-2 lines up) of the sprites being built
+shkB    !byte 0         ; ... stored with the finished sprite buffer
+shk_nxt !byte 0         ; ... copied by the IRQ with that buffer
+shk_cur !byte 0         ; offset currently set in $d011
+hop_t   !byte 0         ; frames of the baddies' hop left
+hop_big !byte 0
+hop_off !byte 0         ; hop of this frame, in pixels
 ti_idle !word 0
 kzp     !fill 256
 zpsave  !fill 256

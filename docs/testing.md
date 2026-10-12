@@ -22,7 +22,8 @@ The controls are injected by overwriting the game's `input` byte right after
 `read_input` has stored it (label `ri_end`). VICE's own joystick injection is not used:
 in VICE 3.7 it does not reach the emulated ports when running headless and it is applied
 with a random delay. **The keyboard and joystick reading code itself is therefore not
-covered by these tests** and has to be tried by hand.
+covered by these tests.** Real key presses can be sent to the VICE window with `xdotool`
+(this is how F1 on the title was tried), but the joystick has to be tried by hand.
 
 Requirements: VICE 3.5+, `python3` with Pillow, and `xvfb-run` when there is no display
 (`sudo pacman -S vice python-pillow xorg-server-xvfb`). With a display, VICE simply opens
@@ -31,38 +32,63 @@ a window while the test runs.
 ## Commodore 64
 
 ```sh
-make -C platforms/c64 check       # play the scenarios, compare with tests/ref-pal
-make -C platforms/c64 reference   # record tests/ref-pal again (after an intended change)
+make -C platforms/c64 check       # play the scenarios, compare with the references
+make -C platforms/c64 reference   # record the references again (after an intended change)
 make -C platforms/c64 frametime   # CPU time used per frame, PAL and NTSC
 ```
 
-`platforms/c64/tests/run_tests.py` has three scenarios:
+`platforms/c64/tests/run_tests.py` has three scenarios. The start-up (RIP splash) is
+skipped: step 0 of every scenario is the first frame of the title screen.
 
-| Scenario | What it does | Frames |
-|---|---|---|
-| `attract` | no input: splash, title, high score table, credits, title | 1700 |
-| `play` | starts a game; an autopilot plays (carefully for a minute, then ignoring the baddies); after two minutes the remaining lives are taken away; initials are entered; waits for the table | ~7700 |
-| `levels` | visits levels 1 to 9 (the 8 colour schemes and the first repeat); the autopilot plays and "level complete" is forced after 420 frames | ~5200 |
+| Scenario | What it does |
+|---|---|
+| `attract` | no input: title, high score table, credits, title again (1600 steps) |
+| `play` | starts a game; an autopilot plays (carefully for a minute, then ignoring the baddies); after two minutes the remaining lives are taken away; initials are entered; waits for the table |
+| `levels` | visits levels 1 to 9 (the 8 colour schemes and the first repeat) with endless lives; the autopilot plays and "level complete" is forced after 420 steps |
 
-For every frame it records the game variables (player, gaps, enemies, score, random
-seed...) and a checksum of the picture. `compare` names the first frame and variable that
-differ; `--ignore-screen` compares the game logic only, which is the right check for a
-change that is meant to alter the picture but not the behaviour.
+For every step it records the game variables (player, gaps, enemies, score, random
+seed...) and a checksum of the picture. `compare` names the first step and variable that
+differ, or lists the steps whose picture differs while the game state is the same.
+
+### Two clocks
+
+- `--clock frame` (default): one step is one video frame, timing included. Any change in
+  the code speed changes what happens next, because levels 1 and 2 move the floors on
+  even frames only, and a slower screen set-up or one late frame shifts that. Use it to
+  check that **nothing at all** changed (reference: `tests/ref-pal`).
+- `--clock logic`: one step is one game update, and the game's frame counter is set to the
+  update number. Timing no longer matters, so two versions that run at a different speed
+  can be compared for their **game logic**. The picture checksum is then taken from
+  memory (bitmap, colours and the sprite list of the next frame, leaving out the side
+  columns and the blinking row, which the interrupt changes by time), not from VICE's
+  half-drawn picture (reference: `tests/ref-pal-logic`).
 
 ```sh
 cd platforms/c64
-python3 tests/run_tests.py record /tmp/new                      # current build
-python3 tests/run_tests.py compare tests/ref-pal /tmp/new       # everything
-python3 tests/run_tests.py compare tests/ref-pal /tmp/new --ignore-screen
-python3 tests/run_tests.py record /tmp/ntsc --video ntsc        # also: paln
+python3 tests/run_tests.py record /tmp/new --clock logic             # current build
+python3 tests/run_tests.py compare tests/ref-pal-logic /tmp/new
+python3 tests/run_tests.py compare tests/ref-pal-logic /tmp/new --ignore-screen
+python3 tests/run_tests.py record /tmp/off --clock logic --fx-off    # effects off (F1)
+python3 tests/run_tests.py record /tmp/ntsc --video ntsc             # also: paln
 ```
 
-`tests/ref-pal/` holds the reference of **v1.0.1** on PAL (traces and contact sheets).
-The picture checksums depend on the VICE version (recorded with VICE 3.7.1); the game
-variables should not. Record the reference again on your machine before relying on the
-picture comparison.
+The picture checksums of the `frame` clock depend on the VICE version (the references
+were recorded with VICE 3.7.1). Record the references again on your machine before
+relying on them.
+
+### Checks of the shake and the blinking text (branch v1.1.0-dev)
+
+Compared with v1.0.1, logic clock, all three scenarios:
+
+- game logic: identical (11,067 updates);
+- effects off: identical pictures except the title (new F1 line, blinking text) and the
+  high score table of the attract cycle (the stray banner is gone);
+- effects on: the pictures differ in addition only in the 6 to 24 frames after a head
+  bump or a fall.
 
 ## Baseline measurements, v1.0.1
+
+(The shake adds about 1 to 2 % of a frame to the game loop.)
 
 ### Video standards
 

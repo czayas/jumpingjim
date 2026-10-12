@@ -21,13 +21,18 @@ designed to take the game to other platforms.
 2. On a C64 or in VICE: `LOAD"*",8,1` and `RUN`.
 
 **Controls:** keyboard **O/Z** left, **P/X** right, **Q/SPACE** jump,
-**SPACE/RETURN** start · joystick in **port 2 or 1** (up or fire = jump).
+**SPACE/RETURN** start · joystick in **port 2 or 1** (up or fire = jump) ·
+**F1** on the title screen switches the extra effects on or off.
 
 **New in this port:**
 - **Top-10 high score table**, with arcade-style initials. It is saved on the disk as `JJ.HISCORES`.
 - **"Transporter" effect:** enemies falling towards the ground floor dematerialise and reappear at the top.
 - **Tuned movement:** Jim and the stopped robot stay in sync with the sliding floors.
 - **SID music:** the original AY music converted to the SID, plus a Retro Informática Paraguay splash screen.
+- **Screen shake** (can be switched off with F1): the screen shakes when Jim bumps his head
+  or lands after a fall, and the baddies give a little hop. Only the picture changes; the
+  game itself plays exactly as before.
+- **Blinking "PRESS SPACE OR FIRE"** instead of the yellow inverse banner of the original.
 
 Technical details in [`platforms/c64/README.md`](platforms/c64/README.md).
 

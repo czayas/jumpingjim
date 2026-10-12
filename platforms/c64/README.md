@@ -45,6 +45,7 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
 ## Controls
 - Keyboard: **O/Z** left, **P/X** right, **Q/SPACE** jump, **SPACE/RETURN** start.
 - Joystick in **port 2 or 1**: left/right, up or fire = jump.
+- **F1** on the title screen: extra effects on/off (on when the game starts).
 
 ## Technical notes
 
@@ -73,6 +74,19 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
   in sparkles and rematerialises near the ceiling before continuing its fall to floor 5.
   It is harmless meanwhile (as in the original). It uses sprites 122–127, and the
   multiplexer can replace the outline layer with coloured sparkles.
+- **Screen shake and hops** (addition, F1 on the title switches them off): when Jim
+  bumps his head the screen shakes 1 pixel for 6 frames; when he lands after a fall it
+  shakes 2 pixels for 8 + 4 frames per floor fallen (up to 4 floors). Meanwhile every
+  baddie hops (2 or 4 pixels) without stopping. The shake moves the whole picture up with
+  YSCROLL (`$D011`, set in the top-of-frame interrupt together with the sprite buffer it
+  belongs to) and the sprites with it; row 24, only seen while the screen is up, has the
+  colour of the border. The hop is only drawn: positions and collisions are untouched, and
+  the game logic is identical to v1.0.1 (see `docs/testing.md`).
+- **Blinking text** (change from the original): "PRESS SPACE OR FIRE" blinks between
+  yellow and invisible instead of the yellow inverse banner (the Spectrum FLASH attribute).
+  This also fixes a stray banner: the title left its blinking row active while the high
+  score table was being drawn, and sometimes a yellow bar stayed between two entries.
+  Every new screen now stops the blinking row.
 - **Instant start** (change from the original): the original freezes the game for 130
   frames on "GET READY!". Here play starts at once: the text stays for the same time while
   Jim blinks (invulnerable) and can already move.
@@ -85,7 +99,7 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
 ## Memory map
 | Range | Use |
 |---|---|
-| `$0801–$B9FF` | program + data (music, precomputed logo, game over, RIP logo) |
+| `$0801–$BDFF` | program + data (music, precomputed logo, game over, RIP logo); `$BE00–$BFFF` free |
 | `$C000–$C3FF` | bitmap colours + sprite pointers |
 | `$C400–$DFFF` | sprites (copied at start-up; I/O is switched off to write `$D000+`) |
 | `$E000–$FF3F` | bitmap |

@@ -11,8 +11,9 @@ all: $(PRG) $(D64)
 $(GEN): $(ASSETS)/jumpingjim.json tools/convert_c64.py
 	python3 tools/convert_c64.py $(ASSETS) $(BUILD)
 
+# the .lbl file (addresses of the labels, VICE format) is used by the tests
 $(PRG): src/main.a $(GEN)
-	cd src && acme -f cbm -o ../$(PRG) main.a
+	cd src && acme -f cbm --vicelabels ../$(BUILD)/jumpingjim.lbl -o ../$(PRG) main.a
 
 # test build: scripted input (jump + walk right), used for automated screenshots
 test: $(GEN)
@@ -28,6 +29,21 @@ $(D64): $(PRG)
 
 run: $(PRG)
 	x64sc -autostart $(PRG)
+
+# automated tests in headless VICE (see ../../docs/testing.md)
+#   make check      play the scripted scenarios and compare with tests/ref-pal
+#   make reference  record tests/ref-pal again (after an intended change)
+#   make frametime  CPU time used per frame, PAL and NTSC
+check: $(PRG)
+	python3 tests/run_tests.py check tests/ref-pal
+
+reference: $(PRG)
+	rm -rf tests/ref-pal
+	python3 tests/run_tests.py record tests/ref-pal
+	rm -rf tests/ref-pal/shots
+
+frametime: $(PRG)
+	python3 tests/frame_time.py
 
 clean:
 	rm -rf $(BUILD)
@@ -45,4 +61,4 @@ dist: $(PRG) $(D64)
 	cd $(DIST)/c64 && rm -f ../jumpingjim-c64-$(VERSION).zip && zip -q -r ../jumpingjim-c64-$(VERSION).zip .
 	rm -rf $(DIST)/c64
 
-.PHONY: all test promo run clean dist
+.PHONY: all test promo run check reference frametime clean dist

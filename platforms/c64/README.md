@@ -11,6 +11,7 @@ make          # build/jumpingjim.prg and build/jumpingjim.d64
 make run      # opens it in x64sc
 make test     # build/test.prg with scripted input (jumps and walks by itself)
 make promo    # build/promo.prg: autopilot that plays on its own (for recording videos)
+make check    # automated tests in headless VICE, compared with tests/ref-pal
 ```
 On Manjaro/Arch:
 

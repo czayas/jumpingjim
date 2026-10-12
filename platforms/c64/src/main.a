@@ -900,7 +900,7 @@ bot_end
 }
         lda t1
         sta input
-        rts
+ri_end  rts                 ; (label used by the test harness to script the input)
 !ifdef TEST {
 tframe  !word 0
 }

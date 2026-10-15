@@ -1,0 +1,682 @@
+; ===========================================================================
+;  RIP intro - Commodore 64 (ACME)
+;
+;  Muestra una "lámina" (el logo de Retro Informática Paraguay u otra imagen
+;  convertida con tools/convertir.py) con un fundido de entrada y de salida,
+;  como la intro de Jumping Jim v1.1.0. No depende de nada del programa que
+;  la incluye: tiene su propia espera de cuadro, su lectura de teclado y
+;  joysticks y sus tablas.
+;
+;  Uso (ver README.md):
+;      RI_SCREEN = $c000          ; opcional: configuración (valores por omisión)
+;      !source "rip-intro/c64/rip_intro.a"
+;      ...
+;      jsr ri_intro               ; el logo de RIP; C=1 si se salteó
+;      lda #<lamina : ldx #>lamina : ldy #250 : jsr ri_show   ; otra imagen
+;
+;  Necesita: E/S visible ($01 = $35, $36 o $37). Las interrupciones pueden
+;  estar activas mientras no ocupen las líneas 251 a 255 de la pantalla.
+;  Usa la memoria de video configurada (bitmap de 8000 bytes, pantalla de
+;  1000 bytes) y la RAM de color, y las direcciones RI_ZP..RI_ZP+10 de la
+;  página cero (las guarda y las deja como estaban).
+;  Al volver: pantalla encendida y toda negra (bitmap, pantalla y RAM de
+;  color en 0), modo bitmap en el banco configurado, $d016 como estaba,
+;  sprites apagados, teclas y disparo ya soltados.
+; ===========================================================================
+
+; ---------------------------------------------------------------- configuración
+!ifndef RI_SCREEN { RI_SCREEN = $c000 }   ; colores de las celdas (1000 bytes)
+!ifndef RI_BITMAP { RI_BITMAP = $e000 }   ; bitmap (8000 bytes)
+!ifndef RI_D011   { RI_D011   = $37 }     ; bitmap, 24 filas, YSCROLL 7 (como Jumping Jim)
+!ifndef RI_STEP   { RI_STEP   = 4 }       ; tics por paso del fundido
+!ifndef RI_HOLD   { RI_HOLD   = 110 }     ; tics con el logo a pleno (se saltea con disparo)
+!ifndef RI_ZP     { RI_ZP     = $f0 }     ; 11 bytes de página cero
+!ifndef RI_LINE   { RI_LINE   = 18 }      ; línea donde empieza cada tic (ver ri_level)
+!ifndef RI_DELAY  { RI_DELAY  = 7 }       ; y la espera fina después (5 ciclos c/u)
+!ifndef RI_LOGO   { RI_LOGO   = 1 }       ; 1: ri_intro muestra la lámina "ri_logo",
+                                          ; que define quien incluye el módulo:
+                                          ;   ri_logo !binary "build/rip_logo.bin"
+                                          ; 0: sin ri_intro (solo ri_show)
+
+!if (RI_SCREEN >> 14) != (RI_BITMAP >> 14) {
+        !error "RI_SCREEN y RI_BITMAP tienen que estar en el mismo banco de 16 KB"
+}
+!if RI_SCREEN & $3ff { !error "RI_SCREEN tiene que ser múltiplo de $400" }
+!if RI_BITMAP & $1fff { !error "RI_BITMAP tiene que ser $x000 o $x000+$2000" }
+
+RI_BANK = RI_SCREEN >> 14
+RI_D018 = (((RI_SCREEN & $3fff) >> 10) << 4) | (((RI_BITMAP & $3fff) >> 13) << 3)
+ri_p    = RI_ZP                 ; punteros
+ri_q    = RI_ZP + 2
+ri_sp   = RI_ZP + 4
+ri_dp   = RI_ZP + 6
+ri_t3   = RI_ZP + 8             ; temporales
+ri_t4   = RI_ZP + 9
+ri_cnt  = RI_ZP + 10
+
+; ===========================================================================
+;  ri_intro: el logo de RIP con los tiempos de Jumping Jim
+; ===========================================================================
+!if RI_LOGO {
+ri_intro
+        lda #<ri_logo
+        ldx #>ri_logo
+        ldy #RI_HOLD
+        ; (sigue en ri_show)
+}
+
+; ===========================================================================
+;  ri_show: A/X = dirección de la lámina, Y = tics a pleno.
+;  Un tic es un cuadro en PAL y PAL-N; en NTSC se saltea 1 cuadro de cada 6,
+;  así que los tiempos son los mismos en segundos (50 tics por segundo).
+;  Vuelve con C=1 si se pulsó disparo, espacio o RETURN durante la espera.
+; ===========================================================================
+ri_show
+        sta ri_pic
+        stx ri_pic+1
+        sty ri_hold
+        ldx #10                 ; guardar la página cero que se usa
+-       lda RI_ZP,x
+        sta ri_zps,x
+        dex
+        bpl -
+        lda #0
+        sta ri_skip
+        lda ri_ntsc
+        bpl +
+        jsr ri_detect           ; la primera vez: PAL o NTSC
++       lda $d016
+        sta ri_d016
+        ; ---- pantalla apagada y negra, banco y punteros de video
+        lda $d011
+        and #$6f                ; sin pantalla (bit 4) ni bit 8 del raster
+        sta $d011
+        lda #0
+        sta $d020
+        sta $d021
+        sta $d015
+        lda $dd02
+        ora #3
+        sta $dd02
+        lda $dd00
+        and #$fc
+        ora #3 - RI_BANK
+        sta $dd00
+        lda #RI_D018
+        sta $d018
+        jsr ri_clear
+        ; ---- cabecera de la lámina
+        lda ri_pic
+        sta ri_p
+        lda ri_pic+1
+        sta ri_p+1
+        ldy #0
+        lda (ri_p),y
+        sta ri_mode
+        iny
+        lda (ri_p),y
+        sta ri_col
+        iny
+        lda (ri_p),y
+        sta ri_row
+        iny
+        lda (ri_p),y
+        sta ri_w
+        iny
+        lda (ri_p),y
+        sta ri_h
+        sec
+        lda ri_w
+        sbc #1
+        sta rl_w1+1             ; (ri_level: "ldy #w-1")
+        sta rh_w1+1
+        ; ri_bm = lámina + 5; ri_sc = ri_bm + w*h*8; ri_cl = ri_sc + w*h
+        lda ri_pic
+        clc
+        adc #5
+        sta ri_bm
+        lda ri_pic+1
+        adc #0
+        sta ri_bm+1
+        jsr ri_cells            ; ri_n = w*h
+        lda ri_n
+        sta ri_t
+        lda ri_n+1
+        asl ri_t                ; *8
+        rol
+        asl ri_t
+        rol
+        asl ri_t
+        rol
+        sta ri_t+1
+        lda ri_bm
+        clc
+        adc ri_t
+        sta ri_sc
+        lda ri_bm+1
+        adc ri_t+1
+        sta ri_sc+1
+        lda ri_sc
+        clc
+        adc ri_n
+        sta ri_cl
+        lda ri_sc+1
+        adc ri_n+1
+        sta ri_cl+1
+        jsr ri_copy_bitmap
+        ; destino de los colores: RI_SCREEN / $d800 + fila*40 + col
+        lda #0
+        sta ri_t+1
+        lda ri_row
+        asl
+        asl
+        clc
+        adc ri_row              ; fila*5
+        asl
+        rol ri_t+1
+        asl
+        rol ri_t+1
+        asl
+        rol ri_t+1              ; fila*40
+        clc
+        adc ri_col
+        sta ri_dst
+        sta ri_cdst
+        lda ri_t+1
+        adc #0
+        sta ri_t+1
+        clc
+        adc #>RI_SCREEN
+        sta ri_dst+1
+        lda ri_t+1
+        clc
+        adc #$d8
+        sta ri_cdst+1
+        lda ri_mode             ; modo multicolor u hires
+        beq +
+        lda #$18
+        bne ++
++       lda #$08
+++      sta $d016
+        ; ---- colores en negro y pantalla encendida
+        lda #4
+        jsr ri_level
+        lda #RI_D011
+        sta $d011
+        ; ---- fundido de entrada: niveles 4, 3, 2, 1, 0
+        lda #4
+        sta ri_lv
+-       lda ri_lv
+        jsr ri_step
+        dec ri_lv
+        bpl -
+        ; ---- a pleno (disparo, espacio o RETURN lo cortan)
+        lda ri_hold
+        sta ri_t
+        beq ri_out
+-       jsr ri_tick
+        jsr ri_fire
+        beq +
+        inc ri_skip
+        bne ri_out
++       dec ri_t
+        bne -
+        ; ---- fundido de salida: niveles 1, 2, 3, 4
+ri_out  lda #1
+        sta ri_lv
+-       lda ri_lv
+        jsr ri_step
+        inc ri_lv
+        lda ri_lv
+        cmp #5
+        bne -
+        ; ---- esperar que suelten la tecla o el disparo
+-       jsr ri_tick
+        jsr ri_fire
+        bne -
+        lda ri_d016
+        sta $d016
+        ldx #10                 ; y dejarla como estaba
+-       lda ri_zps,x
+        sta RI_ZP,x
+        dex
+        bpl -
+        lda ri_skip
+        cmp #1                  ; C=1 si se salteó
+        rts
+
+; un paso del fundido: escribe el nivel A ya y espera hasta que pasen
+; RI_STEP+1 tics desde que empezó a escribir (con el logo de RIP, 5 cuadros
+; por paso como en Jumping Jim). La escritura dura casi 2 cuadros y cuenta
+; cuántos tics pasaron mientras tanto (ri_seen), así el ritmo no cambia si
+; una interrupción del programa la demora un poco.
+ri_step jsr ri_level
+        lda #RI_STEP + 1
+        sec
+        sbc ri_seen
+        beq ++
+        bcc ++
+        tax                     ; (ri_tick no toca X)
+-       jsr ri_tick
+        dex
+        bne -
+++      rts
+
+; ---------------------------------------------------------------- tic de 50 Hz
+; Un tic empieza en la línea RI_LINE de la pantalla (20, arriba de la imagen,
+; como la interrupción de Jumping Jim). En NTSC (60 cuadros por segundo) uno
+; de cada 6 cuadros no cuenta como tic.
+ri_tick jsr ri_frame
+        lda ri_ntsc
+        beq +
+        dec ri_six
+        bne +
+        lda #6
+        sta ri_six
+        jsr ri_frame
++       rts
+
+ri_frame
+-       lda $d012               ; primero, estar en las líneas 0..RI_LINE-1
+        cmp #RI_LINE            ; (se lee $d012 antes que $d011: si la línea
+        bcs -                   ;  pasa de 255 a 256 en el medio, se nota)
+        bit $d011
+        bmi -
+-       lda $d012               ; después, esperar la línea RI_LINE
+        cmp #RI_LINE
+        bcc -
+        ldy #RI_DELAY           ; y unos ciclos más, para empezar donde
+-       dey                     ; empezaba Jumping Jim (línea 20, ciclo 58)
+        bne -
+ri_frame_end
+        rts
+
+; PAL (312 líneas) o NTSC (263 o 262): la línea más alta alcanzada.
+; ri_ntsc = 0 en PAL y PAL-N (50 Hz), 1 en NTSC (60 Hz).
+ri_detect
+        php
+        sei
+-       lda $d011               ; esperar la línea 256
+        bpl -
+        lda #0
+        sta ri_t
+-       lda $d012               ; seguir la línea hasta que vuelva a 0
+        cmp ri_t
+        bcc +
+        sta ri_t
++       lda $d011
+        bmi -
+        plp
+        lda #0
+        ldx ri_t
+        cpx #$20                ; PAL llega a 311 = 256 + $37
+        bcs +
+        lda #1
++       sta ri_ntsc
+        lda #6
+        sta ri_six
+        rts
+
+; ---------------------------------------------------------------- controles
+; Z=0 si están pulsados disparo (puerto 1 o 2), espacio o RETURN.
+ri_fire lda #$ff
+        sta $dc02
+        lda #0
+        sta $dc03
+        lda #$7f                ; fila de la barra espaciadora
+        sta $dc00
+        lda $dc01
+        eor #$ff
+        and #$10
+        sta ri_t+1
+        lda #$fe                ; fila de RETURN
+        sta $dc00
+        lda $dc01
+        eor #$ff
+        and #$02
+        ora ri_t+1
+        sta ri_t+1
+        lda #$ff                ; joysticks
+        sta $dc00
+        lda $dc00
+        and $dc01
+        eor #$ff
+        and #$10
+        ora ri_t+1
+        rts
+
+; ---------------------------------------------------------------- borrar
+ri_clear
+        lda #<RI_BITMAP
+        sta ri_p
+        lda #>RI_BITMAP
+        sta ri_p+1
+        lda #0
+        tay
+        ldx #31                 ; 31 páginas + 64 bytes = 8000
+-       sta (ri_p),y
+        iny
+        bne -
+        inc ri_p+1
+        dex
+        bne -
+-       sta (ri_p),y
+        iny
+        cpy #64
+        bne -
+        ldx #0
+-       sta RI_SCREEN,x
+        sta RI_SCREEN+$100,x
+        sta RI_SCREEN+$200,x
+        sta RI_SCREEN+$2e8,x
+        sta $d800,x
+        sta $d900,x
+        sta $da00,x
+        sta $dae8,x
+        inx
+        bne -
+        rts
+
+; ri_n = w * h
+ri_cells
+        lda #0
+        sta ri_n
+        sta ri_n+1
+        ldx ri_h
+-       lda ri_n
+        clc
+        adc ri_w
+        sta ri_n
+        bcc +
+        inc ri_n+1
++       dex
+        bne -
+        rts
+
+; ---------------------------------------------------------------- bitmap
+; copia w*8 bytes por fila de celdas, en RI_BITMAP + fila*320 + col*8
+ri_copy_bitmap
+        lda ri_bm
+        sta ri_p
+        lda ri_bm+1
+        sta ri_p+1
+        lda ri_row
+        jsr ri_rowaddr          ; ri_q = RI_BITMAP + fila*320 + col*8
+        lda ri_h
+        sta ri_lv               ; filas que faltan (ri_lv se usa después)
+cb_row  lda ri_q                ; inicio de la fila en pantalla
+        sta ri_t
+        lda ri_q+1
+        sta ri_t+1
+        ldx ri_w
+cb_cell ldy #7
+-       lda (ri_p),y
+        sta (ri_q),y
+        dey
+        bpl -
+        lda ri_p
+        clc
+        adc #8
+        sta ri_p
+        bcc +
+        inc ri_p+1
++       lda ri_q
+        clc
+        adc #8
+        sta ri_q
+        bcc +
+        inc ri_q+1
++       dex
+        bne cb_cell
+        lda ri_t                ; siguiente fila: inicio + 320
+        clc
+        adc #<320
+        sta ri_q
+        lda ri_t+1
+        adc #>320
+        sta ri_q+1
+        dec ri_lv
+        bne cb_row
+        rts
+
+ri_rowaddr                      ; A = fila
+        tax
+        lda #<RI_BITMAP
+        sta ri_q
+        lda #>RI_BITMAP
+        sta ri_q+1
+        cpx #0
+        beq ++
+-       lda ri_q
+        clc
+        adc #<320
+        sta ri_q
+        lda ri_q+1
+        adc #>320
+        sta ri_q+1
+        dex
+        bne -
+++      lda ri_col
+        asl
+        asl
+        asl
+        php
+        clc
+        adc ri_q
+        sta ri_q
+        lda ri_q+1
+        adc #0
+        plp                     ; acarreo de col*8 (col >= 32)
+        adc #0
+        sta ri_q+1
+        rts
+
+; ---------------------------------------------------------------- fundido
+; ri_level: escribe los colores de la lámina oscurecidos al nivel A (0 =
+; originales, 4 = negro), fila por fila de arriba abajo. Es la rutina de
+; Jumping Jim v1.1.0, con la misma velocidad: empieza en la línea 20 y tarda
+; más que un cuadro, así que cada paso del fundido "baja" por la imagen
+; durante dos cuadros (el haz alcanza a la escritura). Ese barrido suaviza
+; el fundido y es parte del efecto.
+ri_level
+        asl
+        asl
+        asl
+        asl
+        sta ri_t4
+        lda ri_sc
+        sta ri_sp
+        lda ri_sc+1
+        sta ri_sp+1
+        lda ri_cl
+        sta ri_p
+        lda ri_cl+1
+        sta ri_p+1
+        lda ri_dst
+        sta ri_dp
+        lda ri_dst+1
+        sta ri_dp+1
+        lda ri_cdst
+        sta ri_q
+        lda ri_cdst+1
+        sta ri_q+1
+        lda ri_h
+        sta ri_cnt
+        lda #0
+        sta ri_seen
+        jsr ri_line             ; línea de partida
+        lda ri_mode
+        bne rl_row
+        jmp rh_row
+rl_row                          ; multicolor: pantalla (2 colores) + RAM de color
+rl_w1   ldy #$ff                ; w-1
+-       lda (ri_sp),y
+        and #$0f
+        ora ri_t4
+        tax
+        lda ri_fcol,x
+        sta ri_t3
+        lda (ri_sp),y
+        lsr
+        lsr
+        lsr
+        lsr
+        ora ri_t4
+        tax
+        lda ri_fcol,x
+        asl
+        asl
+        asl
+        asl
+        ora ri_t3
+        sta (ri_dp),y
+        lda (ri_p),y
+        and #$0f
+        ora ri_t4
+        tax
+        lda ri_fcol,x
+        sta (ri_q),y
+        dey
+        bpl -
+        jsr rl_next
+        bne rl_row
+        rts
+rh_row                          ; hires: solo la pantalla
+rh_w1   ldy #$ff
+-       lda (ri_sp),y
+        and #$0f
+        ora ri_t4
+        tax
+        lda ri_fcol,x
+        sta ri_t3
+        lda (ri_sp),y
+        lsr
+        lsr
+        lsr
+        lsr
+        ora ri_t4
+        tax
+        lda ri_fcol,x
+        asl
+        asl
+        asl
+        asl
+        ora ri_t3
+        sta (ri_dp),y
+        dey
+        bpl -
+        jsr rl_next
+        bne rh_row
+        rts
+rl_next lda ri_sp               ; origen += w, destino += 40; Z=1 al final
+        clc
+        adc ri_w
+        sta ri_sp
+        bcc +
+        inc ri_sp+1
++       lda ri_p
+        clc
+        adc ri_w
+        sta ri_p
+        bcc +
+        inc ri_p+1
++       lda ri_dp
+        clc
+        adc #40
+        sta ri_dp
+        bcc +
+        inc ri_dp+1
++       lda ri_q
+        clc
+        adc #40
+        sta ri_q
+        bcc +
+        inc ri_q+1
++       jsr ri_line             ; ¿pasó la línea de un tic desde la fila anterior?
+        lda ri_ln+1
+        cmp ri_lp+1
+        bne +
+        lda ri_ln
+        cmp ri_lp
++       bcc rl_wrap             ; la línea bajó: dio la vuelta (pasó por 0)
+        lda ri_lp+1             ; subió: cruzó si antes < RI_LINE <= ahora
+        bne rl_keep
+        lda ri_lp
+        cmp #RI_LINE
+        bcs rl_keep
+rl_now  lda ri_ln+1
+        bne rl_cnt
+        lda ri_ln
+        cmp #RI_LINE
+        bcc rl_keep
+rl_cnt  lda ri_ntsc              ; en NTSC, 1 de cada 6 cuadros no es tic
+        beq +                   ; (igual que en ri_tick)
+        dec ri_six
+        bne +
+        lda #6
+        sta ri_six
+        bne rl_keep
++       inc ri_seen
+        bne rl_keep
+rl_wrap lda ri_lp+1             ; dio la vuelta: cruzó si antes < RI_LINE
+        bne rl_now              ; (la vuelta pasa por 0; ahora >= RI_LINE)
+        lda ri_lp
+        cmp #RI_LINE
+        bcc rl_cnt
+        bcs rl_now
+rl_keep lda ri_ln
+        sta ri_lp
+        lda ri_ln+1
+        sta ri_lp+1
+        dec ri_cnt
+        rts
+
+; línea actual del haz, 9 bits, en ri_ln (y la anterior en ri_lp)
+ri_line lda ri_ln
+        sta ri_lp
+        lda ri_ln+1
+        sta ri_lp+1
+-       lda $d011
+        and #$80
+        sta ri_ln+1
+        lda $d012
+        sta ri_ln
+        lda $d011
+        and #$80
+        cmp ri_ln+1
+        bne -                   ; cambió el bit 8 en el medio: otra vez
+        asl
+        rol
+        sta ri_ln+1             ; 0 o 1
+        rts
+
+; ---------------------------------------------------------------- datos
+ri_fcol                         ; color oscurecido por nivel (0..4) - ver convertir.py
+        !byte  0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15
+        !byte  0,15, 9,14, 6,11, 0,15, 2, 0, 8, 0,11, 5, 4,12
+        !byte  0,12, 0, 4, 0, 0, 0,12, 9, 0, 2, 0, 0,11, 6,11
+        !byte  0,11, 0, 6, 0, 0, 0,11, 0, 0, 9, 0, 0, 0, 0, 0
+        !byte  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+ri_ntsc !byte $ff               ; $ff = sin detectar todavía; 0 PAL/PAL-N, 1 NTSC
+ri_six  !byte 6
+ri_pic  !word 0
+ri_bm   !word 0
+ri_sc   !word 0
+ri_cl   !word 0
+ri_n    !word 0
+ri_t    !word 0
+ri_hold !byte 0
+ri_mode !byte 0
+ri_col  !byte 0
+ri_row  !byte 0
+ri_w    !byte 0
+ri_h    !byte 0
+ri_lv   !byte 0
+ri_dst  !word 0
+ri_cdst !word 0
+ri_skip !byte 0
+ri_zps  !fill 11                ; copia de la página cero usada
+ri_seen !byte 0                 ; tics que pasaron durante la escritura
+ri_ln   !word 0                 ; línea del haz (ri_line)
+ri_lp   !word 0
+ri_d016 !byte 0

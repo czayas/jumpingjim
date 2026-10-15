@@ -29,8 +29,12 @@ On Debian/Ubuntu: `sudo apt install acme vice` (VICE needs the C64 ROMs installe
 
 ## Splash screen
 On start-up the **Retro Informática Paraguay** logo is shown (a 68×192 multicolour bitmap
-converted from `assets/branding/rip_logo.png`), faded in and out through colour-darkening
-tables. It lasts about 3 s; fire skips it.
+converted from `lib/rip-intro/assets/rip_logo.png`), faded in and out through
+colour-darkening tables. It lasts about 3 s; fire, space or RETURN skips it.
+It is the RIP intro module (`lib/rip-intro`, a copy of github.com/czayas/rip-intro made by
+`tools/update_rip_intro.sh`; the version is in `lib/rip-intro/VERSION`), which grew out
+of this game's own splash: same picture, same fade, same timing on PAL and PAL-N. On NTSC
+it now keeps the PAL timing (2.84 s instead of 2.92 s).
 
 ## High score table
 At the end of a game, if the score makes the top 10, three initials are requested
@@ -125,7 +129,7 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
 ## Memory map
 | Range | Use |
 |---|---|
-| `$0801–$B090` | program + data (music, packed logo, packed sprites, packed backgrounds, game over, RIP logo); `$B091–$BFFF` free (3.9 KB) |
+| `$0801–$B690` | program + data (music, packed logo, packed sprites, packed backgrounds, game over, RIP intro); `$B691–$BFFF` free (2.4 KB) |
 | `$C000–$C3FF` | bitmap colours + sprite pointers |
 | `$C400–$DFFF` | sprites (unpacked at start-up; I/O is switched off to write `$D000+`) |
 | `$E000–$FF3F` | bitmap |

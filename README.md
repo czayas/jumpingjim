@@ -75,8 +75,10 @@ tools/           extract.py dumps all game data to a neutral format; release.sh 
                  backgrounds/ draws the level pictures
 releases/        ready-made release zips (build one with: make -C platforms/c64 dist VERSION=vX.Y.Z)
 assets/          neutral data: jumpingjim.json (tables, levels, music, effects, logo, texts),
-                 font, voice (4-bit and WAV), sprites as PNG, RIP logo, backgrounds/ (the
+                 font, voice (4-bit and WAV), sprites as PNG, backgrounds/ (the
                  level pictures, made for this port)
+lib/rip-intro/   the Retro Informática Paraguay intro (logo, fade, converter), a module
+                 shared by RIP's games; tools/update_rip_intro.sh copies a new version
 docs/            game-spec.md (complete rules and logic), porting-guide.md, testing.md
 platforms/c64/   the Commodore 64 port: src/, tools/convert_c64.py, tests/, Makefile
 promo/           promotional screenshots, video and GIF

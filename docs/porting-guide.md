@@ -7,7 +7,7 @@ original/JumpingJim_v4.nex
         │  tools/extract.py           (run once; already done and committed)
         ▼
 assets/  jumpingjim.json, font.bin, sample_4bit.bin, sample.wav, sprites/*.png, screens/*.png,
-         branding/rip_logo.png
+         backgrounds/*.png   (+ lib/rip-intro: the RIP intro, logo and specification)
         │  platforms/<platform>/tools/convert_<platform>.py
         ▼
 platforms/<platform>/build/   data in the native format + final binary

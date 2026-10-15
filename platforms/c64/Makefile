@@ -11,16 +11,22 @@ all: $(PRG) $(D64)
 $(GEN): $(ASSETS)/jumpingjim.json $(wildcard $(ASSETS)/backgrounds/*.png) tools/convert_c64.py ../../tools/lzpack.py
 	python3 tools/convert_c64.py $(ASSETS) $(BUILD)
 
+# the RIP intro (lib/rip-intro: the logo converted for its module)
+RIP := ../../lib/rip-intro
+$(BUILD)/rip_logo.bin: $(RIP)/assets/rip_logo.png $(RIP)/tools/convertir.py
+	mkdir -p $(BUILD)
+	python3 $(RIP)/tools/convertir.py $< $@ --modo multi --celdas 17x24 --col 11 --fila 0
+
 # the .lbl file (addresses of the labels, VICE format) is used by the tests
-$(PRG): src/main.a $(GEN)
+$(PRG): src/main.a $(RIP)/c64/rip_intro.a $(BUILD)/rip_logo.bin $(GEN)
 	cd src && acme -f cbm --vicelabels ../$(BUILD)/jumpingjim.lbl -o ../$(PRG) main.a
 
 # test build: scripted input (jump + walk right), used for automated screenshots
-test: $(GEN)
+test: $(GEN) $(BUILD)/rip_logo.bin
 	cd src && acme -f cbm -DTEST=5 -o ../$(BUILD)/test.prg main.a
 
 # autopilot demo used for the promo video (title for 5 s, then plays from level 2)
-promo: $(GEN)
+promo: $(GEN) $(BUILD)/rip_logo.bin
 	cd src && acme -f cbm -DTEST=7 -DPROMO=1 -DSTARTLEVEL=2 -DSTARTBCD=2 -o ../$(BUILD)/promo.prg main.a
 
 $(D64): $(PRG)

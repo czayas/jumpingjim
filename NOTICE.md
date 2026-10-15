@@ -18,7 +18,7 @@ authorship when redistributing it, and credit roman126.
 *Jumping Jim* is itself an AI-assisted reimagining of *Jumping Jack*
 (Imagine Software, 1983).
 
-The Retro Informática Paraguay logo (`assets/branding/rip_logo.png`) belongs to
+The Retro Informática Paraguay logo (`lib/rip-intro/assets/rip_logo.png`) belongs to
 Retro Informática Paraguay.
 
 The level backgrounds (`assets/backgrounds/`) are not part of the original game: they were

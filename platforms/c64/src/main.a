@@ -3623,184 +3623,19 @@ mu_v3off
         rts
 
 ; ===========================================================================
-;  Retro Informatica Paraguay splash: multicolour bitmap with fade in/out
+;  Retro Informatica Paraguay splash: the RIP intro module (lib/rip-intro,
+;  github.com/czayas/rip-intro), which started as this game's own splash.
 ; ===========================================================================
-RIP_W   = 17                ; cells
-RIP_COL = 11                ; first screen column
+RI_ZP = $d0                 ; 11 bytes of zero page (the game uses $02-$cf)
+!source "../../../lib/rip-intro/c64/rip_intro.a"
+
 rip_splash
-        lda #0
+        lda #0              ; no sprites while it runs
         sta obn
         jsr build_sprites
         lda #0
         sta border
-        sta $d020
-        sta $d021
-        ; clear bitmap (cls stops before the vectors at $fffa), screen and colour RAM
-        lda #0
-        jsr cls
-        lda #0
-        ldx #0
--       sta SCREEN,x
-        sta SCREEN+$100,x
-        sta SCREEN+$200,x
-        sta SCREEN+$2e8,x
-        sta $d800,x
-        sta $d900,x
-        sta $da00,x
-        sta $dae8,x
-        inx
-        bne -
-        ; bitmap cells
-        lda #<rip_bitmap
-        sta src
-        lda #>rip_bitmap
-        sta src+1
-        ldx #0
-rs_row  lda bm_lo,x
-        clc
-        adc #<((RIP_COL-4)*8)
-        sta dst
-        lda bm_hi,x
-        adc #>((RIP_COL-4)*8)
-        sta dst+1
-        ldy #RIP_W*8-1
--       lda (src),y
-        sta (dst),y
-        dey
-        bne -
-        lda (src),y
-        sta (dst),y
-        lda src
-        clc
-        adc #RIP_W*8
-        sta src
-        bcc +
-        inc src+1
-+       inx
-        cpx #24
-        bne rs_row
-        lda #$18            ; multicolour bitmap
-        sta $d016
-        lda #4
-        jsr rip_colours     ; all black before the display is switched on
-        lda #$37            ; bitmap on, 24 rows, yscroll 7 -> 256x192 window
-        sta $d011
-        ; fade in
-        lda #4
-        sta t5
--       lda t5
-        jsr rip_colours
-        lda #4
-        jsr waitn
-        dec t5
-        bpl -
-        ; hold about 2 seconds (fire skips)
-        lda #110
-        sta t5
--       jsr waitframe
-        jsr read_input
-        lda input
-        and #8
-        bne +
-        dec t5
-        bne -
-+       ; fade out
-        lda #1
-        sta t5
--       lda t5
-        jsr rip_colours
-        lda #4
-        jsr waitn
-        inc t5
-        lda t5
-        cmp #5
-        bne -
-        jsr wait_release
-        lda #$08            ; back to hires for the game
-        sta $d016
-        rts
-
-; write the logo colours darkened by level A (0 = original, 4 = black)
-rip_colours
-        asl
-        asl
-        asl
-        asl
-        sta t4
-        lda #<rip_screen
-        sta sptr
-        lda #>rip_screen
-        sta sptr+1
-        lda #<rip_color
-        sta src
-        lda #>rip_color
-        sta src+1
-        lda #<(SCREEN+RIP_COL)
-        sta dst
-        lda #>(SCREEN+RIP_COL)
-        sta dst+1
-        lda #<($d800+RIP_COL)
-        sta fp
-        lda #>($d800+RIP_COL)
-        sta fp+1
-        lda #24
-        sta cnt
-rc_row  ldy #RIP_W-1
--       lda (sptr),y
-        and #$0f
-        ora t4
-        tax
-        lda fadetab,x
-        sta t3
-        lda (sptr),y
-        lsr
-        lsr
-        lsr
-        lsr
-        ora t4
-        tax
-        lda fadetab,x
-        asl
-        asl
-        asl
-        asl
-        ora t3
-        sta (dst),y
-        lda (src),y
-        and #$0f
-        ora t4
-        tax
-        lda fadetab,x
-        sta (fp),y
-        dey
-        bpl -
-        lda sptr
-        clc
-        adc #RIP_W
-        sta sptr
-        bcc +
-        inc sptr+1
-+       lda src
-        clc
-        adc #RIP_W
-        sta src
-        bcc +
-        inc src+1
-+       lda dst
-        clc
-        adc #40
-        sta dst
-        bcc +
-        inc dst+1
-+       lda fp
-        clc
-        adc #40
-        sta fp
-        bcc +
-        inc fp+1
-+       dec cnt
-        bne rc_row
-        rts
+        jmp ri_intro        ; (turns the display on and leaves it black)
 
 ; ===========================================================================
 ;  Top 10 table, saved to disk as "JJ.HISCORES" (C64 addition)
@@ -4504,9 +4339,7 @@ bcol   !fill 10
 
 font       !binary "../build/font.bin"
 go_attr    !binary "../build/gameover_attr.bin"
-rip_bitmap !binary "../build/rip_bitmap.bin"
-rip_screen !binary "../build/rip_screen.bin"
-rip_color  !binary "../build/rip_color.bin"
+ri_logo    !binary "../build/rip_logo.bin"
 music_data !binary "../build/music.bin"
 go_title   !binary "../build/gameover_title.bin"
 go_pic     !binary "../build/gameover_pic.bin"

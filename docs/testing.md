@@ -123,6 +123,16 @@ Compared with v1.0.1, logic clock, all three scenarios:
 (Ideal: 50.1 on PAL, 49.9 on NTSC. "CPU" is the average share of a frame the game loop
 needs.)
 
+### Checks of the RIP intro module (branch v1.1.0-dev)
+
+- the splash is now `lib/rip-intro` (`rip-intro/tests/probar.py` compares it with this
+  game's former splash): the same 7 steady pictures, same timing on PAL and PAL-N (total
+  144.6 and 143.7 ticks); on NTSC the PAL timing (142.1 ticks instead of 146.3);
+- from the title screen on, logic clock: game logic and pictures identical;
+- the splash now ends one frame earlier (frame 166 instead of 167), so with the real
+  (frame) clock the floors of levels 1-2 move on the other parity of frames: the frame
+  reference `tests/ref-pal` was recorded again.
+
 ## Baseline measurements, v1.0.1
 
 (The shake adds about 1 to 2 % of a frame to the game loop.)

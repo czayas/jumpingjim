@@ -97,14 +97,14 @@ Compared with v1.0.1, logic clock, all three scenarios:
 - title speed: 467 loop iterations in the first 590 frames (v1.0.1: 470);
 - loading from the .d64 with true drive emulation and saving `JJ.HISCORES`: works.
 
-### Checks of PAL / NTSC / PAL-N (branch v1.1.0-dev)
+### Checks of PAL / NTSC / Drean (branch v1.1.0-dev)
 
-- detection (`tv_sys` read back after start-up): PAL 0, NTSC 1, old NTSC 1, PAL-N 2;
+- detection (`tv_sys` read back after start-up): PAL 0, NTSC 1, old NTSC 1, Drean 2;
 - game ticks per second (counted from `fcount`): PAL 50.12, NTSC 49.86, old NTSC 50.83,
-  PAL-N 50.47;
+  Drean 50.47;
 - tuning (SID frequency in use against the AY frequency of each note): within 1.4 cents
-  on PAL and NTSC, 2.4 cents on PAL-N;
-- game logic and pictures with the logic clock on NTSC, old NTSC and PAL-N: identical to
+  on PAL and NTSC, 2.4 cents on Drean;
+- game logic and pictures with the logic clock on NTSC, old NTSC and Drean: identical to
   PAL, except the credits line that names the system;
 - game updates per second reached with 2 to 8 baddies (`make frametime`):
 
@@ -126,7 +126,7 @@ needs.)
 ### Checks of the RIP intro module (branch v1.1.0-dev)
 
 - the splash is now `lib/rip-intro` (`rip-intro/tests/probar.py` compares it with this
-  game's former splash): the same 7 steady pictures, same timing on PAL and PAL-N (total
+  game's former splash): the same 7 steady pictures, same timing on PAL and Drean (total
   144.6 and 143.7 ticks); on NTSC the PAL timing (142.1 ticks instead of 146.3);
 - from the title screen on, logic clock: game logic and pictures identical;
 - the splash now ends one frame earlier (frame 166 instead of 167), so with the real
@@ -139,14 +139,14 @@ needs.)
 
 ### Video standards
 
-The game was written for PAL. It also starts and plays on NTSC and PAL-N (Drean) with no
+The game was written for PAL. It also starts and plays on NTSC and Drean with no
 visible fault in the three scenarios, but the game logic runs once per video frame:
 
 | Standard | Frames per second | Game and music speed | Pitch of the music |
 |---|---|---|---|
 | PAL | 50.12 | as designed | as designed |
 | NTSC | 59.83 | 19 % faster | 3.8 % sharp (about 2/3 of a semitone) |
-| PAL-N | 50.47 | 0.7 % faster | 3.9 % sharp |
+| Drean | 50.47 | 0.7 % faster | 3.9 % sharp |
 
 (The speed follows from the frame rate; the pitch from the clock of each machine,
 because the SID frequency table was computed for the PAL clock. The sound itself is not

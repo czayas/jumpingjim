@@ -1,6 +1,6 @@
 # Jumping Jim — Commodore 64
 
-Complete port in 6502 assembly (ACME). Runs on a real C64 (PAL, NTSC or PAL-N/Drean) or
+Complete port in 6502 assembly (ACME). Runs on a real C64 (PAL, NTSC or Drean) or
 in an emulator (VICE).
 
 ## Building
@@ -33,7 +33,7 @@ converted from `lib/rip-intro/assets/rip_logo.png`), faded in and out through
 colour-darkening tables. It lasts about 3 s; fire, space or RETURN skips it.
 It is the RIP intro module (`lib/rip-intro`, a copy of github.com/czayas/rip-intro made by
 `tools/update_rip_intro.sh`; the version is in `lib/rip-intro/VERSION`), which grew out
-of this game's own splash: same picture, same fade, same timing on PAL and PAL-N. On NTSC
+of this game's own splash: same picture, same fade, same timing on PAL and Drean. On NTSC
 it now keeps the PAL timing (2.84 s instead of 2.92 s).
 
 ## High score table
@@ -105,14 +105,17 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
   This also fixes a stray banner: the title left its blinking row active while the high
   score table was being drawn, and sometimes a yellow bar stayed between two entries.
   Every new screen now stops the blinking row.
-- **PAL, NTSC and PAL-N** (addition): at start-up the game counts the CPU cycles of one
-  frame with CIA 1 timer A (PAL 19656, PAL-N 20280, NTSC 17095 or 16768 on old NTSC
+- **PAL, NTSC and Drean** (addition): at start-up the game counts the CPU cycles of one
+  frame with CIA 1 timer A (PAL 19656, Drean 20280, NTSC 17095 or 16768 on old NTSC
   machines) and the credits screen shows the result. On NTSC (60 frames per second) one
   frame in six is not a game tick, so the game, the music and every timer run at the 50
-  ticks per second of PAL (49.9). NTSC and PAL-N machines have a faster clock (1.02 MHz
+  ticks per second of PAL (49.9). NTSC and Drean machines have a faster clock (1.02 MHz
   instead of 0.985), so they get SID frequency tables computed for it: every note is
   within 2.4 cents of the original AY pitch on all three systems (v1.0.1 was 2/3 of a
-  semitone sharp on NTSC and PAL-N, and 19 % faster on NTSC).
+  semitone sharp on NTSC and Drean, and 19 % faster on NTSC).
+- **Drean** (v1.1.1): the credits screen names the Argentine C64 "DREAN" (v1.1.0 said
+  "PAL-N", the name of its video standard). Nothing else changed: the program differs from
+  v1.1.0 only in those letters.
 - **Faster screen updates** (no change in behaviour): the gap edges are drawn with fewer
   instructions and, during play, the HUD redraws only its numbers and hearts. With eight
   baddies the game now keeps 49.9 updates per second on PAL and 49.5-49.9 on NTSC (v1.0.1

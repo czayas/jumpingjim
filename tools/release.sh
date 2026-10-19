@@ -2,19 +2,21 @@
 # ---------------------------------------------------------------------------
 # Jumping Jim - publish a GitHub release from a ready-made zip
 #
-#   tools/release.sh v1.0.0
+#   tools/release.sh c64-v1.1.1
 #
-# Publishes releases/jumpingjim-c64-<version>.zip (already built and committed)
-# as the GitHub release <version>. Nothing is compiled.
+# Publishes releases/jumpingjim-c64-v<x.y.z>.zip (already built and committed)
+# as the GitHub release (and tag) c64-v<x.y.z>. Nothing is compiled.
+# (Tags carry the platform since v1.1.1: c64-v1.1.1. The older ones are v1.0.0,
+# v1.0.1 and v1.1.0; for those, pass the plain version.)
 # Requirement: the GitHub CLI logged in  ->  sudo pacman -S github-cli && gh auth login
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 VERSION="${1:-}"
-[[ -n "$VERSION" ]] || { echo "usage: $0 vX.Y.Z   (e.g. $0 v1.0.0)"; exit 1; }
+[[ -n "$VERSION" ]] || { echo "usage: $0 c64-vX.Y.Z   (e.g. $0 c64-v1.1.1)"; exit 1; }
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-ZIP="releases/jumpingjim-c64-$VERSION.zip"
+ZIP="releases/jumpingjim-c64-${VERSION#c64-}.zip"
 
 [[ -f "$ZIP" ]] || { echo "error: $ZIP not found"; exit 1; }
 command -v gh >/dev/null || { echo "error: install the GitHub CLI: sudo pacman -S github-cli"; exit 1; }
@@ -28,4 +30,4 @@ Keys: O/Z left, P/X right, Q/SPACE jump. Joystick in port 2 or 1.
 
 C64 port by Carlos Zayas, developed with AI assistance, for [Retro Informática Paraguay](https://www.youtube.com/@retroinfopy). MIT licensed; see NOTICE.md."
 
-gh release create "$VERSION" "$ZIP" --title "Jumping Jim $VERSION" --notes "$NOTES"
+gh release create "$VERSION" "$ZIP" --title "Jumping Jim ${VERSION#c64-} (Commodore 64)" --notes "$NOTES"

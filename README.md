@@ -19,7 +19,7 @@ designed to take the game to other platforms.
 
 1. Download the `.d64` from [Releases](../../releases), or build it with `make` (see below).
 2. On a C64 or in VICE: `LOAD"*",8,1` and `RUN`. The same file runs on PAL, NTSC and
-   PAL-N (Drean) machines: it detects the system and keeps the speed and the tuning of the
+   Drean machines: it detects the system and keeps the speed and the tuning of the
    music right on each.
 
 **Controls:** keyboard **O/Z** left, **P/X** right, **Q/SPACE** jump,
@@ -38,7 +38,7 @@ designed to take the game to other platforms.
   or lands after a fall, and the baddies give a little hop. Only the picture changes; the
   game itself plays exactly as before.
 - **Blinking "PRESS SPACE OR FIRE"** instead of the yellow inverse banner of the original.
-- **PAL, NTSC and PAL-N** in one program, at the same speed and in tune on all three
+- **PAL, NTSC and Drean** in one program, at the same speed and in tune on all three
   (the credits screen shows the system found).
 
 Technical details in [`platforms/c64/README.md`](platforms/c64/README.md).
@@ -63,7 +63,7 @@ make assets                 # regenerate assets/ from the original .nex
 make -C platforms/c64 run   # try it in VICE
 make -C platforms/c64 promo # autopilot build (for recording demos)
 make -C platforms/c64 check # automated tests in headless VICE (see docs/testing.md)
-make release VERSION=v1.0.0 # publish releases/jumpingjim-c64-v1.0.0.zip on GitHub
+make release VERSION=c64-v1.1.1 # publish releases/jumpingjim-c64-v1.1.1.zip on GitHub
 ```
 
 ## Repository layout (ready for more ports)

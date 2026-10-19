@@ -4089,7 +4089,7 @@ s_tv    !raw "RUNNING ON ",0
 tv_names !word s_pal, s_ntsc, s_paln
 s_pal   !raw "PAL ",0
 s_ntsc  !raw "NTSC",0
-s_paln  !raw "PAL-N",0
+s_paln  !raw "DREAN",0         ; the Argentine PAL-N C64 (always called Drean in texts)
 
 ; high score table screen.  A = timeout/8 frames.  C=1 if fire was pressed
 show_table

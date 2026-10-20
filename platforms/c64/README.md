@@ -113,7 +113,7 @@ credits (~8 s, with the animated logo) → title. Fire on any of them starts a g
   instead of 0.985), so they get SID frequency tables computed for it: every note is
   within 2.4 cents of the original AY pitch on all three systems (v1.0.1 was 2/3 of a
   semitone sharp on NTSC and Drean, and 19 % faster on NTSC).
-- **Drean** (v1.1.1): the credits screen names the Argentine C64 "DREAN" (v1.1.0 said
+- **Drean** (1.1.1): the credits screen names the Argentine C64 "DREAN" (v1.1.0 said
   "PAL-N", the name of its video standard). Nothing else changed: the program differs from
   v1.1.0 only in those letters.
 - **Faster screen updates** (no change in behaviour): the gap edges are drawn with fewer

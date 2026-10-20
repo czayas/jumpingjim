@@ -57,7 +57,7 @@ frametime: $(PRG)
 clean:
 	rm -rf $(BUILD)
 
-# release packaging, used by tools/release.sh:  make dist VERSION=v1.0.0
+# release packaging, used by tools/release.sh:  make dist VERSION=1.1.1
 VERSION ?= dev
 DIST    := ../../dist
 dist: $(PRG) $(D64)

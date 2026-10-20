@@ -12,6 +12,6 @@ c64:
 clean:
 	$(MAKE) -C platforms/c64 clean
 
-# publish a GitHub release:  make release VERSION=c64-v1.1.1
+# publish a GitHub release:  make release VERSION=c64-1.1.1
 release:
 	tools/release.sh $(VERSION)

@@ -63,7 +63,7 @@ make assets                 # regenerate assets/ from the original .nex
 make -C platforms/c64 run   # try it in VICE
 make -C platforms/c64 promo # autopilot build (for recording demos)
 make -C platforms/c64 check # automated tests in headless VICE (see docs/testing.md)
-make release VERSION=c64-v1.1.1 # publish releases/jumpingjim-c64-v1.1.1.zip on GitHub
+make release VERSION=c64-1.1.1 # publish releases/jumpingjim-c64-1.1.1.zip on GitHub
 ```
 
 ## Repository layout (ready for more ports)
@@ -73,7 +73,7 @@ original/        the original ZX Spectrum Next binary (.nex): the reference
 tools/           extract.py dumps all game data to a neutral format; release.sh publishes releases;
                  vice_harness.py drives VICE for the automated tests; lzpack.py packs data;
                  backgrounds/ draws the level pictures
-releases/        ready-made release zips (build one with: make -C platforms/c64 dist VERSION=vX.Y.Z)
+releases/        ready-made release zips (build one with: make -C platforms/c64 dist VERSION=X.Y.Z)
 assets/          neutral data: jumpingjim.json (tables, levels, music, effects, logo, texts),
                  font, voice (4-bit and WAV), sprites as PNG, backgrounds/ (the
                  level pictures, made for this port)

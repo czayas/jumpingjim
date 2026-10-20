@@ -2,18 +2,18 @@
 # ---------------------------------------------------------------------------
 # Jumping Jim - publish a GitHub release from a ready-made zip
 #
-#   tools/release.sh c64-v1.1.1
+#   tools/release.sh c64-1.1.1
 #
-# Publishes releases/jumpingjim-c64-v<x.y.z>.zip (already built and committed)
-# as the GitHub release (and tag) c64-v<x.y.z>. Nothing is compiled.
-# (Tags carry the platform since v1.1.1: c64-v1.1.1. The older ones are v1.0.0,
+# Publishes releases/jumpingjim-c64-<x.y.z>.zip (already built and committed)
+# as the GitHub release (and tag) c64-<x.y.z>. Nothing is compiled.
+# (Since 1.1.1 the tags carry the platform and no "v": c64-1.1.1. The older ones are v1.0.0,
 # v1.0.1 and v1.1.0; for those, pass the plain version.)
 # Requirement: the GitHub CLI logged in  ->  sudo pacman -S github-cli && gh auth login
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
 VERSION="${1:-}"
-[[ -n "$VERSION" ]] || { echo "usage: $0 c64-vX.Y.Z   (e.g. $0 c64-v1.1.1)"; exit 1; }
+[[ -n "$VERSION" ]] || { echo "usage: $0 c64-X.Y.Z   (e.g. $0 c64-1.1.1)"; exit 1; }
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 ZIP="releases/jumpingjim-c64-${VERSION#c64-}.zip"
